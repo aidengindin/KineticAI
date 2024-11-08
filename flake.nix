@@ -1,4 +1,3 @@
-# flake.nix
 {
   description = "Python-Based Endurance Platform";
 
@@ -19,7 +18,7 @@
           # Web framework and API
           fastapi
           uvicorn
-          pydantic
+          pydantic-settings
           
           # Data processing
           pandas
@@ -34,9 +33,11 @@
           
           # Utils
           python-jose  # JWT
-          passlib     # password hashing
-          requests
-          httpx
+          passlib      # password hashing
+          requests     # HTTP client
+          aiohttp      # async HTTP client
+          backoff      # retrying
+          hvac         # HashiCorp Vault
           
           # Testing
           pytest
@@ -81,6 +82,50 @@
           poetry
         ];
 
+        externalDataGatewayScript = pkgs.writeScript "external-data-gateway" ''
+          set -e
+    
+          function cleanup {
+            echo "Stopping development services and application..."
+            kill $APP_PID 2>/dev/null || true
+            ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml down
+          }
+          
+          trap cleanup EXIT
+          
+          echo "Starting development services..."
+          ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml up -d
+          
+          # Wait for Redis to be healthy
+          echo "Waiting for Redis to be ready..."
+          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml exec -T redis redis-cli ping; do
+            echo "Redis is unavailable - sleeping"
+            sleep 1
+          done
+          
+          # Wait for Vault to be healthy
+          echo "Waiting for Vault to be ready..."
+          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml exec -T vault vault status; do
+            echo "Vault is unavailable - sleeping"
+            sleep 1
+          done
+          
+          # Set up Vault dev token
+          export VAULT_ADDR="http://localhost:8200"
+          export VAULT_TOKEN="dev-token"
+          
+          echo "Development services are ready!"
+          echo "Redis is running on localhost:6379"
+          echo "Vault is running on localhost:8200"
+          
+          # Start the FastAPI application
+          echo "Starting the application..."
+          ${pythonEnv}/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload &
+          APP_PID=$!
+          
+          # Wait for the application to exit
+          wait $APP_PID
+        '';
       in
       {
         devShells.default = pkgs.mkShell {
@@ -137,6 +182,13 @@
           checkPhase = ''
             pytest tests/
           '';
+        };
+
+        apps = {
+          devExternalGateway = {
+            type = "service";
+            script = externalDataGatewayScript;
+          };
         };
       }
     );
