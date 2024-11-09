@@ -82,30 +82,31 @@
           poetry
         ];
 
-        externalDataGatewayScript = pkgs.writeScript "external-data-gateway" ''
+        externalDataGatewayScript = pkgs.writeShellScriptBin "external-data-gateway" ''
           set -e
+          cd services/external_data_gateway
     
           function cleanup {
             echo "Stopping development services and application..."
             kill $APP_PID 2>/dev/null || true
-            ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml down
+            ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml down
           }
           
           trap cleanup EXIT
           
           echo "Starting development services..."
-          ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml up -d
+          ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml up -d
           
           # Wait for Redis to be healthy
           echo "Waiting for Redis to be ready..."
-          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml exec -T redis redis-cli ping; do
+          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml exec -T redis redis-cli ping; do
             echo "Redis is unavailable - sleeping"
             sleep 1
           done
           
           # Wait for Vault to be healthy
           echo "Waiting for Vault to be ready..."
-          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.dev.yml exec -T vault vault status; do
+          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml exec -T vault vault status; do
             echo "Vault is unavailable - sleeping"
             sleep 1
           done
@@ -120,7 +121,7 @@
           
           # Start the FastAPI application
           echo "Starting the application..."
-          ${pythonEnv}/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload &
+            ${pythonEnv}/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug &
           APP_PID=$!
           
           # Wait for the application to exit
@@ -186,8 +187,8 @@
 
         apps = {
           devExternalGateway = {
-            type = "service";
-            script = externalDataGatewayScript;
+            type = "app";
+            program = "${externalDataGatewayScript}/bin/external-data-gateway";
           };
         };
       }

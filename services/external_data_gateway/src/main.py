@@ -38,14 +38,6 @@ redis_client = Redis.from_url(settings.REDIS_URL)
 # Initialize rate limiter
 rate_limiter = RateLimiter(redis_client)
 
-async def get_sync_manager() -> SyncManager:
-    return SyncManager(
-        redis_client,
-        aiohttp.ClientSession(
-            headers={"Authorization": f"Bearer {settings.get_intervals_api_key}"}
-        )
-    )
-
 @app.post("/sync/intervals/user", response_model=SyncStatusResponse)
 async def start_sync(
     request: SyncRequest,
@@ -53,26 +45,43 @@ async def start_sync(
 ):
     if not await rate_limiter.acquire(f"sync:{request.user_id}"):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    
+    async def run_sync():
+        async with SyncManager(redis_client) as sync_manager:
+            await sync_manager.start_sync(
+                request.user_id,
+                request.start_date,
+                request.end_date
+            )
 
-    sync_manager = await get_sync_manager()
-    try:
-        # Initialize sync status
+    # Initialize status with new manager
+    async with SyncManager(redis_client) as sync_manager:
         status = await sync_manager.update_status(
             request.user_id,
             SyncStatus.PENDING
         )
-        
-        # Start sync in background
-        background_tasks.add_task(
-            sync_manager.start_sync,
-            request.user_id,
-            request.start_date,
-            request.end_date
-        )
-        
+        background_tasks.add_task(run_sync)
         return status
-    finally:
-        await sync_manager.session.close()
+
+    # sync_manager = SyncManager(redis_client)
+    # try:
+    #     # Initialize sync status
+    #     status = await sync_manager.update_status(
+    #         request.user_id,
+    #         SyncStatus.PENDING
+    #     )
+        
+    #     # Start sync in background
+    #     background_tasks.add_task(
+    #         sync_manager.start_sync,
+    #         request.user_id,
+    #         request.start_date,
+    #         request.end_date
+    #     )
+        
+    #     return status
+    # finally:
+    #     await sync_manager.close()
 
 @app.get("/sync/status/{user_id}", response_model=SyncStatusResponse)
 async def get_sync_status(user_id: str):

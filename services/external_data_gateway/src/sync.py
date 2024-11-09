@@ -9,26 +9,33 @@ from src.config import settings
 from src.models import Activity, SyncStatus, SyncStatusResponse
 from src.metrics import SYNC_REQUESTS_TOTAL, ACTIVITY_PROCESSING_TIME, ACTIVE_SYNCS
 import backoff
+import base64
 
 logger = logging.getLogger(__name__)
 
 class SyncManager:
-    def __init__(self, redis_client: Redis, session: Optional[aiohttp.ClientSession] = None):
+    def __init__(self, redis_client: Redis):
         self.redis = redis_client
-        self.session = session or aiohttp.ClientSession(
-            headers={"Authorization": f"Bearer {settings.INTERVALS_API_KEY}"}
-        )
+        credentials = base64.b64encode(f"API_KEY:{settings.get_intervals_api_key}".encode()).decode()
+        self.headers = {"Authorization": f"Basic {credentials}"}
+        self._session = None
 
     async def __aenter__(self):
-        if not self.session:
-            self.session = aiohttp.ClientSession(
-                headers={"Authorization": f"Bearer {settings.INTERVALS_API_KEY}"}
-            )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
+        await self.close()
+
+    @property
+    async def session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(headers=self.headers)
+        return self._session
+
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
 
     def _get_status_key(self, user_id: str) -> str:
         return f"sync:status:{user_id}"
@@ -69,15 +76,29 @@ class SyncManager:
         end_date: datetime
     ) -> List[Activity]:
         url = f"{settings.INTERVALS_API_BASE_URL}/athlete/{user_id}/activities"
-        params = {}
-        params["start"] = start_date.isoformat()
-        params["end"] = end_date.isoformat()
+        params = {
+            "oldest": start_date.strftime("%Y-%m-%dT%H:%M:%S"),
+            "newest": end_date.strftime("%Y-%m-%dT%H:%M:%S")
+        }
 
-        async with ACTIVITY_PROCESSING_TIME.labels("fetch_activities").time():
-            async with self.session.get(url, params=params) as response:
+        with ACTIVITY_PROCESSING_TIME.labels("fetch_activities").time():
+            session = await self.session
+            async with session.get(url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()
-                return [Activity(**activity) for activity in data]
+                # return [Activity(**activity) for activity in data]
+                activities = []
+                for activity in data:
+                    mapped_activity = {
+                        "id": activity["id"],
+                        "start_date": activity["start_date_local"],
+                        "name": activity["name"],
+                        "sport_type": activity["type"],
+                        "duration": activity["icu_recording_time"],
+                        "distance": activity.get("icu_distance")
+                    }
+                    activities.append(Activity(**mapped_activity))
+                return activities
 
     @backoff.on_exception(
         backoff.expo,
@@ -87,8 +108,9 @@ class SyncManager:
     async def fetch_fit_file(self, activity_id: str) -> bytes:
         url = f"{settings.INTERVALS_API_BASE_URL}/activity/{activity_id}/fit-file"
         
-        async with ACTIVITY_PROCESSING_TIME.labels("fetch_fit_file").time():
-            async with self.session.get(url) as response:
+        with ACTIVITY_PROCESSING_TIME.labels("fetch_fit_file").time():
+            session = await self.session
+            async with session.get(url) as response:
                 response.raise_for_status()
                 return await response.read()
 
