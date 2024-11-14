@@ -14,16 +14,40 @@ import base64
 logger = logging.getLogger(__name__)
 
 class SyncManager:
+    """SyncManager handles synchronization of user activities from Intervals.icu API.
+    This class manages the synchronization process of user activities, including fetching
+    activities, downloading FIT files, and maintaining sync status in Redis.
+    Attributes:
+        redis (Redis): Redis client instance for storing sync status
+        headers (dict): HTTP headers for API authentication
+        _session (aiohttp.ClientSession): Async HTTP session for making API requests
+    Example:
+        ```python
+        async with SyncManager(redis_client) as sync_manager:
+            await sync_manager.start_sync(user_id='123', start_date=start, end_date=end)
+            status = await sync_manager.get_status(user_id='123')
+        ```
+    The class implements the async context manager protocol for proper resource cleanup.
+    It includes automatic retries for API requests using exponential backoff strategy
+    and maintains detailed sync status including progress metrics in Redis.
+    The sync process is batched to handle large amounts of activities efficiently
+    and includes comprehensive error handling and status tracking.
+    Notes:
+        - Requires valid Intervals.icu API credentials
+        - Uses Redis for storing sync status
+        - Implements prometheus metrics for monitoring
+        - Handles API rate limiting through backoff decorators
+    """
     def __init__(self, redis_client: Redis):
         self.redis = redis_client
         credentials = base64.b64encode(f"API_KEY:{settings.get_intervals_api_key}".encode()).decode()
         self.headers = {"Authorization": f"Basic {credentials}"}
         self._session = None
-
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
         await self.close()
 
     @property
@@ -34,7 +58,7 @@ class SyncManager:
 
     async def close(self):
         if self._session and not self._session.closed:
-            await self._session.close()
+            self._session = None
             self._session = None
 
     def _get_status_key(self, user_id: str) -> str:
@@ -75,6 +99,20 @@ class SyncManager:
         start_date: datetime,
         end_date: datetime
     ) -> List[Activity]:
+        """
+        Fetch activities for a given user within a specified date range.
+
+        Args:
+            user_id (str): The ID of the user whose activities are to be fetched.
+            start_date (datetime): The start date of the range to fetch activities.
+            end_date (datetime): The end date of the range to fetch activities.
+
+        Returns:
+            List[Activity]: A list of Activity objects representing the fetched activities.
+
+        Raises:
+            HTTPError: If the HTTP request to fetch activities fails.
+        """
         url = f"{settings.INTERVALS_API_BASE_URL}/athlete/{user_id}/activities"
         params = {
             "oldest": start_date.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -94,7 +132,7 @@ class SyncManager:
                         "start_date": activity["start_date_local"],
                         "name": activity["name"],
                         "sport_type": activity["type"],
-                        "duration": activity["icu_recording_time"],
+                        "duration": activity["icu_icu_rding_time"],
                         "distance": activity.get("icu_distance")
                     }
                     activities.append(Activity(**mapped_activity))
@@ -128,6 +166,24 @@ class SyncManager:
             return False
 
     async def start_sync(self, user_id: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+        """
+        Starts the synchronization process for a given user within an optional date range.
+        This method performs the following steps:
+        1. Increments the active sync counter and logs the sync request as started.
+        2. Updates the user's sync status to IN_PROGRESS.
+        3. Fetches activities for the user within the specified date range.
+        4. Updates the user's sync status with the total number of activities to be processed.
+        5. Processes activities in batches, updating the sync status after each batch.
+        6. Updates the user's sync status to COMPLETED if all activities are processed successfully,
+           or to FAILED if any activity fails.
+        7. Logs the sync request as completed or failed based on the final status.
+        Args:
+            user_id (str): The ID of the user for whom the sync is being performed.
+            start_date (Optional[datetime], optional): The start date for fetching activities. Defaults to None.
+            end_date (Optional[datetime], optional): The end date for fetching activities. Defaults to None.
+        Raises:
+            Exception: If any error occurs during the synchronization process, it is logged and re-raised.
+        """
         try:
             ACTIVE_SYNCS.inc()
             SYNC_REQUESTS_TOTAL.labels(user_id=user_id, status="started").inc()

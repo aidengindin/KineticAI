@@ -43,6 +43,23 @@ async def start_sync(
     request: SyncRequest,
     background_tasks: BackgroundTasks
 ):
+    """Start a synchronization process for external data.
+    This function initiates a background synchronization task for a specific user
+    within a given date range. It implements rate limiting to prevent excessive
+    synchronization requests from the same user.
+    Args:
+        request (SyncRequest): The synchronization request containing user_id,
+            start_date, and end_date.
+        background_tasks (BackgroundTasks): FastAPI background tasks handler for
+            running the sync process asynchronously.
+    Returns:
+        dict: The initial sync status information.
+    Raises:
+        HTTPException: If the rate limit for the user has been exceeded (status 429).
+    Note:
+        The actual synchronization runs as a background task while the function
+        returns immediately with the initial sync status.
+    """
     if not await rate_limiter.acquire(f"sync:{request.user_id}"):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
     
@@ -63,25 +80,6 @@ async def start_sync(
         background_tasks.add_task(run_sync)
         return status
 
-    # sync_manager = SyncManager(redis_client)
-    # try:
-    #     # Initialize sync status
-    #     status = await sync_manager.update_status(
-    #         request.user_id,
-    #         SyncStatus.PENDING
-    #     )
-        
-    #     # Start sync in background
-    #     background_tasks.add_task(
-    #         sync_manager.start_sync,
-    #         request.user_id,
-    #         request.start_date,
-    #         request.end_date
-    #     )
-        
-    #     return status
-    # finally:
-    #     await sync_manager.close()
 
 @app.get("/sync/status/{user_id}", response_model=SyncStatusResponse)
 async def get_sync_status(user_id: str):
