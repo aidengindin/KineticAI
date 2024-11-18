@@ -4,9 +4,13 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    poetry2nix = {
+      url = "github:nix-community/poetry2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -14,7 +18,9 @@
           config.allowUnfree = true;
         };
 
-        pythonEnv = pkgs.python311.withPackages (ps: with ps; [
+        python = pkgs.python311;
+
+        globalPythonDeps = with pkgs.python311Packages; [
           # Web framework and API
           fastapi
           uvicorn
@@ -59,7 +65,7 @@
           
           # Task queue
           celery
-        ]);
+        ];
 
         # Development tools
         devTools = with pkgs; [
@@ -82,82 +88,142 @@
           poetry
         ];
 
-        externalDataGatewayScript = pkgs.writeShellScriptBin "external-data-gateway" ''
-          set -e
-          cd services/external_data_gateway
-    
-          function cleanup {
-            echo "Stopping development services and application..."
-            kill $APP_PID 2>/dev/null || true
-            ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml down
-          }
-          
-          trap cleanup EXIT
-          
-          echo "Starting development services..."
-          ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml up -d
-          
-          # Wait for Redis to be healthy
-          echo "Waiting for Redis to be ready..."
-          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml exec -T redis redis-cli ping; do
-            echo "Redis is unavailable - sleeping"
-            sleep 1
-          done
-          
-          # Wait for Vault to be healthy
-          echo "Waiting for Vault to be ready..."
-          until ${pkgs.docker-compose}/bin/docker-compose -f docker-compose.yml exec -T vault vault status; do
-            echo "Vault is unavailable - sleeping"
-            sleep 1
-          done
-          
-          # Set up Vault dev token
-          export VAULT_ADDR="http://localhost:8200"
-          export VAULT_TOKEN="dev-token"
-          
-          echo "Development services are ready!"
-          echo "Redis is running on localhost:6379"
-          echo "Vault is running on localhost:8200"
-          
-          # Start the FastAPI application
-          echo "Starting the application..."
-            ${pythonEnv}/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug &
-          APP_PID=$!
-          
-          # Wait for the application to exit
-          wait $APP_PID
-        '';
+        mkPythonServiceTest = name:
+          let
+            servicePythonEnv = python.withPackages(ps:
+              globalPythonDeps
+            );
+          in
+          pkgs.stdenv.mkDerivation {
+            pname = "test-${name}";
+            version = "0.1.0";
+            src = ./services/${name};
+
+            buildInputs = [ servicePythonEnv ];
+
+            dontBuild = true;
+            doCheck = true;
+
+            checkPhase = ''
+              export PYTHONPATH=$PWD:$PYTHONPATH
+              pytest tests/
+            '';
+
+            installPhase = "touch $out";
+          };
+
+        mkPythonService = name:
+          let
+            servicePythonEnv = python.withPackages(ps:
+              globalPythonDeps
+            );
+          in
+          pkgs.stdenv.mkDerivation {
+            pname = name;
+            version = "0.1.0";
+            src = ./services/${name};
+
+            buildInputs = [ servicePythonEnv ];
+
+            checkPhase = ''
+              export PYTHONPATH=$PWD:$PYTHONPATH
+              pytest tests/
+            '';
+
+            doCheck = true;
+
+            buildPhase = ''
+              mkdir -p $out/bin $out/lib
+              cp -r $PWD/* $out/lib/
+
+              cat > $out/bin/${name} <<EOF
+                #!${pkgs.bash}/bin/bash
+                export PYTHONPATH=$out/lib:\$PYTHONPATH
+                exec ${servicePythonEnv}/bin/python -m src.main
+              EOF
+
+              chmod +x $out/bin/${name}
+            '';
+
+            installPhase = "true";
+          };
+
+          pythonFormatCheck = pkgs.stdenv.mkDerivation {
+            name = "python-format-check";
+            src = ./.;
+
+            buildInputs = with pkgs; [
+              black
+              ruff
+              python311Packages.mypy
+            ];
+
+            dontBuild = true;
+            doCheck = true;
+
+            checkPhase = ''
+              black --check services/
+              isort --check services/
+              mypy services/
+            '';
+
+            installPhase = "touch $out";
+          };
+
+          mkPythonDevApp = name: 
+          let
+            servicePythonEnv = python.withPackages(ps:
+              globalPythonDeps
+            );
+            service = mkPythonService name;
+          in pkgs.writeShellApplication {
+            name = "dev-${name}";
+            runtimeInputs = [
+              servicePythonEnv
+              pkgs.docker-compose
+              service
+            ];
+
+            text = ''
+              set -e
+              cd services/${name}
+
+              function cleanup {
+                echo "Stopping development services..."
+                kill $APP_PID 2>/dev/null || true
+                docker-compose -f docker-compose.yml down
+              }
+              trap cleanup EXIT
+
+              echo "Starting development services..."
+              docker-compose -f docker-compose.yml up -d
+
+              sleep 5
+
+              echo "Starting the application..."
+              ${service}/bin/${name} --host 0.0.0.0 --port 8000 --reload --log-level debug &
+              APP_PID=$!
+              wait $APP_PID
+            '';
+          };
+
+          pythonServices = [
+            "external_data_gateway"
+          ];
+
+          devPythonEnv = python.withPackages(ps:
+            globalPythonDeps
+          );
       in
       {
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            pythonEnv
-          ] ++ devTools;
+            devPythonEnv
+            pkgs.just
+          ];
 
           shellHook = ''
-            echo "🏃‍♂️ Endurance Platform Development Environment"
-            
-            # Set up environment variables
-            export PYTHONPATH="$PWD/src:$PYTHONPATH"
-            export DEVELOPMENT_ENV="local"
-            
-            # Create local configuration if it doesn't exist
-            if [ ! -f .env ]; then
-              cp .env.example .env
-            fi
-
-            # Create virtual environment if it doesn't exist
-            if [ ! -d .venv ]; then
-              python -m venv .venv
-            fi
-            
-            # Activate virtual environment
-            source .venv/bin/activate
-            
-            # Install pre-commit hooks
-            if [ -f .pre-commit-config.yaml ]; then
-              pre-commit install
-            fi
+            echo "🏃‍♂️ KineticAI Development Environment"
 
             # Verify Python installation
             python --version
@@ -165,32 +231,25 @@
           '';
         };
 
-        # Example package definition for a service
-        packages.default = pkgs.python311Packages.buildPythonApplication {
-          pname = "kinetic-ai";
-          version = "0.1.0";
-          src = ./.;
-          
-          propagatedBuildInputs = [
-            pythonEnv
-          ];
+        packages = builtins.listToAttrs (map (name: {
+          inherit name;
+          value = mkPythonService name;
+        }) pythonServices);
 
-          checkInputs = [
-            pkgs.python311Packages.pytest
-            pkgs.python311Packages.pytest-cov
-          ];
+        checks = {
+          inherit pythonFormatCheck;
+        } // builtins.listToAttrs (map (name: {
+          name = "test-${name}";
+          value = mkPythonServiceTest name;
+        }) pythonServices);
 
-          checkPhase = ''
-            pytest tests/
-          '';
-        };
-
-        apps = {
-          devExternalGateway = {
+        apps = builtins.listToAttrs (map (name: {
+          name = "dev-${name}";
+          value = {
             type = "app";
-            program = "${externalDataGatewayScript}/bin/external-data-gateway";
+            program = "${mkPythonDevApp name}/bin/dev-${name}";
           };
-        };
+        }) pythonServices);
       }
     );
 }

@@ -8,6 +8,8 @@ from src.config import settings
 from src.models import SyncRequest, SyncStatus, SyncStatusResponse
 from src.sync import SyncManager
 from src.rate_limiter import RateLimiter
+import argparse
+import uvicorn
 
 # Configure logging
 logging.basicConfig(
@@ -94,3 +96,21 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         raise HTTPException(status_code=503, detail="Service unhealthy")
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description="Run the External Data Gateway API")
+    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to run the server on')
+    parser.add_argument('--port', type=int, default=8000, help='Port to run the server on')
+    parser.add_argument('--reload', action='store_true', help='Enable auto-reload')
+    parser.add_argument('--log-level', type=str, default='debug', help='Log level for the server')
+
+    args = parser.parse_args()
+
+    uvicorn.run(
+        "src.main:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        log_level=args.log_level
+    )
