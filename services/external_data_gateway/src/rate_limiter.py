@@ -1,7 +1,9 @@
-from redis import Redis
-from typing import Optional
 import time
+from typing import Optional
+
+from redis import Redis
 from src.config import settings
+
 
 class RateLimiter:
     def __init__(self, redis_client: Redis):
@@ -13,7 +15,7 @@ class RateLimiter:
         pipe = self.redis.pipeline()
         now = time.time()
         window_key = f"{key}:{int(now)}"
-        
+
         pipe.incr(window_key)
         pipe.expire(window_key, self.period)
         current_requests = pipe.execute()[0]

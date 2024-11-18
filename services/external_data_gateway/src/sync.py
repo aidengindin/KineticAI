@@ -1,17 +1,19 @@
-import aiohttp
 import asyncio
-from typing import List, Optional
-import json
-from datetime import datetime, timezone
-from redis import Redis
-import logging
-from src.config import settings
-from src.models import Activity, SyncStatus, SyncStatusResponse
-from src.metrics import SYNC_REQUESTS_TOTAL, ACTIVITY_PROCESSING_TIME, ACTIVE_SYNCS
-import backoff
 import base64
+import json
+import logging
+from datetime import datetime, timezone
+from typing import List, Optional
+
+import aiohttp
+import backoff
+from redis import Redis
+from src.config import settings
+from src.metrics import ACTIVE_SYNCS, ACTIVITY_PROCESSING_TIME, SYNC_REQUESTS_TOTAL
+from src.models import Activity, SyncStatus, SyncStatusResponse
 
 logger = logging.getLogger(__name__)
+
 
 class SyncManager:
     """SyncManager handles synchronization of user activities from Intervals.icu API.
@@ -38,11 +40,15 @@ class SyncManager:
         - Implements prometheus metrics for monitoring
         - Handles API rate limiting through backoff decorators
     """
+
     def __init__(self, redis_client: Redis):
         self.redis = redis_client
-        credentials = base64.b64encode(f"API_KEY:{settings.get_intervals_api_key}".encode()).decode()
+        credentials = base64.b64encode(
+            f"API_KEY:{settings.get_intervals_api_key}".encode()
+        ).decode()
         self.headers = {"Authorization": f"Basic {credentials}"}
-        self._session = None
+        self._session: Optional[aiohttp.ClientSession] = None
+
     async def __aenter__(self):
         return self
 
@@ -65,39 +71,40 @@ class SyncManager:
         return f"sync:status:{user_id}"
 
     async def update_status(
-        self, 
-        user_id: str, 
-        status: SyncStatus, 
+        self,
+        user_id: str,
+        status: SyncStatus,
         total: Optional[int] = None,
         processed: Optional[int] = None,
         failed: Optional[int] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
     ):
         key = self._get_status_key(user_id)
         current = await self.get_status(user_id)
-        
+
         updated = SyncStatusResponse(
             status=status,
             total_activities=total if total is not None else current.total_activities,
-            processed_activities=processed if processed is not None else current.processed_activities,
-            failed_activities=failed if failed is not None else current.failed_activities,
+            processed_activities=(
+                processed if processed is not None else current.processed_activities
+            ),
+            failed_activities=(
+                failed if failed is not None else current.failed_activities
+            ),
             error_message=error,
-            last_updated=datetime.now(timezone.utc)
+            last_updated=datetime.now(timezone.utc),
         )
-        
+
         self.redis.set(key, updated.model_dump_json())
         return updated
 
     @backoff.on_exception(
         backoff.expo,
         (aiohttp.ClientError, asyncio.TimeoutError),
-        max_tries=settings.MAX_RETRIES
+        max_tries=settings.MAX_RETRIES,
     )
     async def fetch_activities(
-        self, 
-        user_id: str,
-        start_date: datetime,
-        end_date: datetime
+        self, user_id: str, start_date: datetime, end_date: datetime
     ) -> List[Activity]:
         """
         Fetch activities for a given user within a specified date range.
@@ -116,7 +123,7 @@ class SyncManager:
         url = f"{settings.INTERVALS_API_BASE_URL}/athlete/{user_id}/activities"
         params = {
             "oldest": start_date.strftime("%Y-%m-%dT%H:%M:%S"),
-            "newest": end_date.strftime("%Y-%m-%dT%H:%M:%S")
+            "newest": end_date.strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
         with ACTIVITY_PROCESSING_TIME.labels("fetch_activities").time():
@@ -133,7 +140,7 @@ class SyncManager:
                         "name": activity["name"],
                         "sport_type": activity["type"],
                         "duration": activity["icu_icu_rding_time"],
-                        "distance": activity.get("icu_distance")
+                        "distance": activity.get("icu_distance"),
                     }
                     activities.append(Activity(**mapped_activity))
                 return activities
@@ -141,11 +148,11 @@ class SyncManager:
     @backoff.on_exception(
         backoff.expo,
         (aiohttp.ClientError, asyncio.TimeoutError),
-        max_tries=settings.MAX_RETRIES
+        max_tries=settings.MAX_RETRIES,
     )
     async def fetch_fit_file(self, activity_id: str) -> bytes:
         url = f"{settings.INTERVALS_API_BASE_URL}/activity/{activity_id}/fit-file"
-        
+
         with ACTIVITY_PROCESSING_TIME.labels("fetch_fit_file").time():
             session = await self.session
             async with session.get(url) as response:
@@ -155,17 +162,22 @@ class SyncManager:
     async def process_activity(self, activity: Activity) -> bool:
         try:
             fit_data = await self.fetch_fit_file(activity.id)
-            
+
             # Stub: Send to ingestion service
             # In production, implement actual sending logic
             logger.info(f"Would send activity {activity.id} to ingestion service")
-            
+
             return True
         except Exception as e:
             logger.error(f"Error processing activity {activity.id}: {str(e)}")
             return False
 
-    async def start_sync(self, user_id: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    async def start_sync(
+        self,
+        user_id: str,
+        start_date: datetime,
+        end_date: datetime,
+    ):
         """
         Starts the synchronization process for a given user within an optional date range.
         This method performs the following steps:
@@ -179,50 +191,54 @@ class SyncManager:
         7. Logs the sync request as completed or failed based on the final status.
         Args:
             user_id (str): The ID of the user for whom the sync is being performed.
-            start_date (Optional[datetime], optional): The start date for fetching activities. Defaults to None.
-            end_date (Optional[datetime], optional): The end date for fetching activities. Defaults to None.
+            start_date (datetime): The start date for fetching activities. Defaults to None.
+            end_date (datetime): The end date for fetching activities. Defaults to None.
         Raises:
             Exception: If any error occurs during the synchronization process, it is logged and re-raised.
         """
         try:
             ACTIVE_SYNCS.inc()
             SYNC_REQUESTS_TOTAL.labels(user_id=user_id, status="started").inc()
-            
+
             await self.update_status(user_id, SyncStatus.IN_PROGRESS)
-            
+
             activities = await self.fetch_activities(user_id, start_date, end_date)
             total_activities = len(activities)
-            
+
             await self.update_status(
                 user_id,
                 SyncStatus.IN_PROGRESS,
                 total=total_activities,
                 processed=0,
-                failed=0
+                failed=0,
             )
 
             processed = 0
             failed = 0
-            
-            for batch in [activities[i:i + settings.SYNC_BATCH_SIZE] 
-                         for i in range(0, len(activities), settings.SYNC_BATCH_SIZE)]:
+
+            for batch in [
+                activities[i : i + settings.SYNC_BATCH_SIZE]
+                for i in range(0, len(activities), settings.SYNC_BATCH_SIZE)
+            ]:
                 results = await asyncio.gather(
                     *[self.process_activity(activity) for activity in batch],
-                    return_exceptions=True
+                    return_exceptions=True,
                 )
-                
+
                 batch_processed = sum(1 for r in results if r is True)
-                batch_failed = sum(1 for r in results if r is False or isinstance(r, Exception))
-                
+                batch_failed = sum(
+                    1 for r in results if r is False or isinstance(r, Exception)
+                )
+
                 processed += batch_processed
                 failed += batch_failed
-                
+
                 await self.update_status(
                     user_id,
                     SyncStatus.IN_PROGRESS,
                     total=total_activities,
                     processed=processed,
-                    failed=failed
+                    failed=failed,
                 )
 
             final_status = SyncStatus.COMPLETED if failed == 0 else SyncStatus.FAILED
@@ -231,18 +247,14 @@ class SyncManager:
                 final_status,
                 total=total_activities,
                 processed=processed,
-                failed=failed
+                failed=failed,
             )
-            
+
             SYNC_REQUESTS_TOTAL.labels(user_id=user_id, status="completed").inc()
-            
+
         except Exception as e:
             logger.error(f"Sync failed for user {user_id}: {str(e)}")
-            await self.update_status(
-                user_id,
-                SyncStatus.FAILED,
-                error=str(e)
-            )
+            await self.update_status(user_id, SyncStatus.FAILED, error=str(e))
             SYNC_REQUESTS_TOTAL.labels(user_id=user_id, status="failed").inc()
             raise
         finally:
@@ -251,11 +263,10 @@ class SyncManager:
     async def get_status(self, user_id: str) -> SyncStatusResponse:
         key = self._get_status_key(user_id)
         data = self.redis.get(key)
-        
+
         if not data:
             return SyncStatusResponse(
-                status=SyncStatus.PENDING,
-                last_updated=datetime.now(timezone.utc)
+                status=SyncStatus.PENDING, last_updated=datetime.now(timezone.utc)
             )
-            
+
         return SyncStatusResponse(**json.loads(data))

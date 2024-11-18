@@ -1,9 +1,11 @@
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
-from src.sync import SyncManager
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from src.models import SyncStatus, SyncStatusResponse
+from src.sync import SyncManager
+
 
 @pytest.mark.asyncio
 async def test_get_status_pending():
@@ -22,6 +24,7 @@ async def test_get_status_pending():
     assert response.status == SyncStatus.PENDING
     assert response.last_updated <= datetime.now(timezone.utc)
 
+
 @pytest.mark.asyncio
 async def test_get_status_existing():
     # Mock Redis client
@@ -32,7 +35,7 @@ async def test_get_status_existing():
         "processed_activities": 5,
         "failed_activities": 1,
         "error_message": None,
-        "last_updated": datetime.now(timezone.utc).isoformat()
+        "last_updated": datetime.now(timezone.utc).isoformat(),
     }
     redis_client.get.return_value = json.dumps(mock_data)
 

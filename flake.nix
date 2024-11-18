@@ -16,6 +16,14 @@
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
+          substituters = [
+            "https://cache.nixos.org"
+            "https://nix-community.cachix.org"
+          ];
+          trustedPublicKeys = [
+            "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+            "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+          ];
         };
 
         python = pkgs.python311;
@@ -65,6 +73,9 @@
           
           # Task queue
           celery
+
+          # Types
+          types-redis
         ];
 
         # Development tools
@@ -148,27 +159,33 @@
             installPhase = "true";
           };
 
-          pythonFormatCheck = pkgs.stdenv.mkDerivation {
-            name = "python-format-check";
-            src = ./.;
+          pythonFormatCheck =
+            let
+              pythonEnv = python.withPackages(ps:
+                globalPythonDeps
+              );
+            in pkgs.stdenv.mkDerivation {
+              name = "python-format-check";
+              src = ./.;
 
-            buildInputs = with pkgs; [
-              black
-              ruff
-              python311Packages.mypy
-            ];
+              buildInputs = [
+                pythonEnv
+                pkgs.black
+                pkgs.ruff
+                pkgs.python311Packages.mypy
+              ];
 
-            dontBuild = true;
-            doCheck = true;
+              dontBuild = true;
+              doCheck = true;
 
-            checkPhase = ''
-              black --check services/
-              isort --check services/
-              mypy services/
-            '';
+              checkPhase = ''
+                black --check services/
+                isort --profile black --check services/
+                mypy services/
+              '';
 
-            installPhase = "touch $out";
-          };
+              installPhase = "touch $out";
+            };
 
           mkPythonDevApp = name: 
           let

@@ -1,13 +1,16 @@
-from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
 from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
+
 
 class SyncStatus(str, Enum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
+
 
 class Activity(BaseModel):
     id: str
@@ -17,10 +20,12 @@ class Activity(BaseModel):
     duration: float
     distance: Optional[float] = None
 
+
 class SyncRequest(BaseModel):
     user_id: str
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+
 
 class SyncStatusResponse(BaseModel):
     status: SyncStatus
