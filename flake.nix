@@ -56,6 +56,8 @@
           # Testing
           pytest
           pytest-cov
+          pytest-asyncio
+          pytest-mock
           
           # Dev tools
           black

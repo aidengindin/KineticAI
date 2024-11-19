@@ -14,8 +14,9 @@ class VaultSettings(BaseSettings):
     VAULT_PATH: str = "external-data-gateway"
     VAULT_MOUNT_POINT: str = "kv"
 
-    class Config:
-        env_file = ".env"
+    model_config = {
+        "env_file": ".env"
+    }
 
 
 class SecretsManager:

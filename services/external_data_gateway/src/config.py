@@ -18,8 +18,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     CORS_ORIGINS: list[str] = ["*"]
 
-    class Config:
-        env_file = ".env"
+    model_config = {"env_file": ".env"}
 
     @cached_property
     def get_intervals_api_key(self) -> str:
