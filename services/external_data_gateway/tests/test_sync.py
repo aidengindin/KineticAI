@@ -1,6 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -27,6 +27,7 @@ async def test_get_status_pending(mock_get_intervals_api_key):
     # Assert the response
     assert response.status == SyncStatus.PENDING
     assert response.last_updated <= datetime.now(timezone.utc)
+
 
 @pytest.mark.asyncio
 @patch("src.config.Settings.get_intervals_api_key", return_value="test_api_key")
@@ -57,6 +58,7 @@ async def test_get_status_existing(mock_get_intervals_api_key):
     assert response.failed_activities == 1
     assert response.error_message is None
     assert response.last_updated.isoformat() == mock_data["last_updated"]
+
 
 @pytest.mark.asyncio
 @patch("src.config.Settings.get_intervals_api_key", return_value="test_api_key")
@@ -92,6 +94,7 @@ async def test_update_status_new(mock_get_intervals_api_key):
     redis_client.set.assert_called_once()
     key = sync_manager._get_status_key(user_id)
     redis_client.set.assert_called_with(key, response.model_dump_json())
+
 
 @pytest.mark.asyncio
 @patch("src.config.Settings.get_intervals_api_key", return_value="test_api_key")
@@ -136,9 +139,12 @@ async def test_update_status_existing(mock_get_intervals_api_key):
     key = sync_manager._get_status_key(user_id)
     redis_client.set.assert_called_with(key, response.model_dump_json())
 
+
 @pytest.mark.asyncio
 async def test_fetch_activities_success(mocker):
-    mocker.patch("src.config.Settings.get_intervals_api_key", return_value="test_api_key")
+    mocker.patch(
+        "src.config.Settings.get_intervals_api_key", return_value="test_api_key"
+    )
     mocker.patch("src.sync.settings.INTERVALS_API_BASE_URL", "https://intervals.test")
 
     # Mock Redis client and response data
@@ -148,9 +154,9 @@ async def test_fetch_activities_success(mocker):
             "id": "123",
             "start_date_local": "2024-01-01T10:00:00",
             "name": "Morning Run",
-            "type": "run", 
-            "icu_icu_rding_time": 3600,
-            "icu_distance": 10000
+            "type": "run",
+            "moving_time": 3600,
+            "icu_distance": 10000,
         }
     ]
 
@@ -186,24 +192,22 @@ async def test_fetch_activities_success(mocker):
 
     # Verify correct URL and parameters were used
     expected_url = f"https://intervals.test/athlete/{user_id}/activities"
-    expected_params = {
-        "oldest": "2024-01-01T00:00:00",
-        "newest": "2024-01-02T00:00:00"
-    }
+    expected_params = {"oldest": "2024-01-01T00:00:00", "newest": "2024-01-02T00:00:00"}
     session.get.assert_called_once_with(expected_url, params=expected_params)
+
 
 @pytest.mark.asyncio
 @patch("src.config.Settings.get_intervals_api_key", return_value="test_api_key")
 async def test_fetch_activities_http_error(mock_get_intervals_api_key):
     # Mock Redis client
     redis_client = MagicMock()
-    
+
     # Mock aiohttp ClientSession with error
     session = AsyncMock()
     mock_response = AsyncMock()
     mock_response.raise_for_status.side_effect = aiohttp.ClientError()
     session.get.return_value.__aenter__.return_value = mock_response
-    
+
     sync_manager = SyncManager(redis_client)
     sync_manager._session = session
 

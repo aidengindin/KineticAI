@@ -14,9 +14,7 @@ class VaultSettings(BaseSettings):
     VAULT_PATH: str = "external-data-gateway"
     VAULT_MOUNT_POINT: str = "kv"
 
-    model_config = {
-        "env_file": ".env"
-    }
+    model_config = {"env_file": ".env"}
 
 
 class SecretsManager:
@@ -39,6 +37,7 @@ class SecretsManager:
 
     def __init__(self, settings: Optional[VaultSettings] = None):
         self.settings = settings or VaultSettings()
+        self.settings.VAULT_TOKEN = "dev-token"
         self._client = None
 
     @property

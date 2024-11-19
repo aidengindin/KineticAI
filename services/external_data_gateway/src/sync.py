@@ -64,7 +64,7 @@ class SyncManager:
 
     async def close(self):
         if self._session and not self._session.closed:
-            self._session = None
+            await self._session.close()
             self._session = None
 
     def _get_status_key(self, user_id: str) -> str:
@@ -135,12 +135,31 @@ class SyncManager:
                 activities = []
                 for activity in data:
                     mapped_activity = {
-                        "id": activity["id"],
-                        "start_date": activity["start_date_local"],
-                        "name": activity["name"],
-                        "sport_type": activity["type"],
-                        "duration": activity["icu_icu_rding_time"],
-                        "distance": activity.get("icu_distance"),
+                        "id": activity.get("id"),
+                        "start_date": activity.get("start_date_local"),
+                        "name": activity.get("name"),
+                        "description": activity.get("description", None),
+                        "sport_type": activity.get("type"),
+                        "duration": activity.get("moving_time"),
+                        "distance": activity.get("icu_distance", None),
+                        "total_elevation_gain": activity.get(
+                            "total_elevation_gain", None
+                        ),
+                        "average_speed": activity.get("average_speed", None),
+                        "average_heartrate": activity.get("average_heartrate", None),
+                        "average_cadence": activity.get("average_cadence", None),
+                        "average_power": activity.get("icu_average_watts", None),
+                        "calories": activity.get("calories", None),
+                        "average_lr_balance": activity.get("avg_lr_balance", None),
+                        "average_gap": activity.get("gap", None),
+                        "perceived_exertion": activity.get("perceived_exertion", None),
+                        "polarization_index": activity.get("polarization_index", None),
+                        "decoupling": activity.get("decoupling", None),
+                        "carbs_ingested": activity.get("carbs_ingested", None),
+                        "normalized_power": activity.get(
+                            "icu_weighted_average_watts", None
+                        ),
+                        "training_load": activity.get("icu_training_load", None),
                     }
                     activities.append(Activity(**mapped_activity))
                 return activities
