@@ -2,3 +2,5 @@
 **/intervals_api_key
 **/__pycache__/
 result
+.mypy_cache
+.pytest_cache
