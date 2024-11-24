@@ -6,7 +6,7 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -14,16 +14,23 @@
           config.allowUnfree = true;
         };
 
+        python = pkgs.python311;
+        poetry = pkgs.poetry.override { python3 = python; };
+
       in
       {
         devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
+          buildInputs = [
+            python
             poetry
-            python312
-            postgresql
-            docker
-            docker-compose
+            pkgs.docker
+            pkgs.docker-compose
           ];
+
+          shellHook = ''
+            export POETRY_PYTHON=${python}/bin/python
+            poetry config virtualenvs.in-project true
+          '';
         };
       }
     );

@@ -3,24 +3,17 @@ name = "kinetic-ai-platform"
 version = "0.1.0"
 description = "Python-Based Endurance Platform"
 authors = ["Aiden Gindin <aiden@aidengindin.com>"]
-packages = [
-    { include = "services/external_data_gateway" },
-    # Add other services here as needed
-]
+# packages = [
+#     { include = "services/*/src" },
+# ]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "3.11.10"
 
 # Shared dependencies across services
 fastapi = "^0.115.5"
 uvicorn = "^0.32.0"
 pydantic-settings = "^2.1.0"
-pandas = "^2.2.0"
-numpy = "^2.1.3"
-scipy = "^1.12.0"
-scikit-learn = "^1.5.2"
-sqlalchemy = "^2.0.0"
-psycopg2 = "^2.9.0"
 redis = "^5.0.0"
 python-jose = "^3.3.0"
 passlib = "^1.7.4"
@@ -28,11 +21,9 @@ requests = "^2.31.0"
 aiohttp = "^3.11.7"
 backoff = "^2.2.0"
 hvac = "^2.1.0"
-transformers = "^4.36.0"
-torch = "^2.2.0"
 prometheus-client = "^0.21.0"
 celery = "^5.3.0"
-types-redis = "^4.6.0"
+types-redis = "^4.6.0.20241004"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

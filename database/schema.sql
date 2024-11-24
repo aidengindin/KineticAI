@@ -59,6 +59,7 @@ CREATE TABLE activity_lap (
 CREATE TABLE activity_stream (
     time TIMESTAMPTZ NOT NULL,
     activity_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
     latitude FLOAT,
     longitude FLOAT,
     power INTEGER,
@@ -71,9 +72,16 @@ CREATE TABLE activity_stream (
     humidity FLOAT,
     vertical_osciillation FLOAT,
     ground_contact_time FLOAT,
+    left_right_balance FLOAT,
     form_power INTEGER,
     leg_spring_stiffness FLOAT,
     air_power INTEGER,
+    dfa_a1 FLOAT,
+    artifacts FLOAT,
+    respiration_rate FLOAT,
+    front_gear INTEGER,
+    rear_gear INTEGER,
+    PRIMARY KEY (time, activity_id, sequence),
     FOREIGN KEY (activity_id) REFERENCES activity(id)
 );
 SELECT create_hypertable('activity_stream', 'time');

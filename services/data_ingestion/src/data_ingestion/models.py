@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class UploadStatus(str, Enum):
@@ -41,12 +41,39 @@ class Activity(BaseModel):
     carbs_ingested: Optional[float] = None
     normalized_power: Optional[int] = None
     training_load: Optional[int] = None
+    fit_file: Optional[bytes] = None
+
+class ActivityStream(BaseModel):
+    time: datetime
+    activity_id: str
+    sequence: int
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    power: Optional[int] = None
+    heart_rate: Optional[int] = None
+    cadence: Optional[int] = None
+    distance: Optional[float] = None
+    altitude: Optional[float] = None
+    speed: Optional[float] = None
+    temperature: Optional[float] = None
+    humidity: Optional[float] = None
+    vertical_oscillation: Optional[float] = None
+    ground_contact_time: Optional[float] = None
+    left_right_balance: Optional[float] = None
+    form_power: Optional[int] = None
+    leg_spring_stiffness: Optional[float] = None
+    air_power: Optional[int] = None
+    dfa_a1: Optional[float] = None
+    artifacts: Optional[float] = None
+    respiration_rate: Optional[float] = None
+    front_gear: Optional[int] = None
+    rear_gear: Optional[int] = None
 
 
 class UploadRequest(BaseModel):
     user_id: str
     activities: list[Activity]
-    fit_files: list[bytearray]
+    fit_files: list[bytes]
 
 
 class UploadStatusResponse(BaseModel):

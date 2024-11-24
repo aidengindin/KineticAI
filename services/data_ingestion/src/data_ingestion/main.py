@@ -1,10 +1,11 @@
 # Configure logging
 import logging
 
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from redis import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import UploadRequest, UploadStatusResponse
 from src.config import settings
@@ -36,9 +37,20 @@ redis_client = Redis.from_url(settings.REDIS_URL)
 
 
 @app.post("/activities", response_model=UploadStatusResponse)
-async def start_upload(request: UploadRequest, background_tasks: BackgroundTasks):
+async def start_upload(request: UploadRequest, background_tasks: BackgroundTasks, fit_file: UploadFile = File(...)):
     pass
 
 @app.get("/activities/{activity_id}/status", response_model=UploadStatusResponse)
 async def get_upload_status(activity_id: str):
-    pass
+    status_key = f"status:{activity_id}"
+    status = await redis_client.hgetall(status_key)
+
+    if not status:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    return UploadStatusResponse(
+        activity_id=activity_id,
+        status=status["status"],
+        error_message=status.get("error_message", ""),
+        # TODO: fill in the rest of the fields
+    )
