@@ -37,26 +37,26 @@ class ActivityRepository:
                 distance=record.get("distance"),
                 altitude=record.get("enhanced_altitude"),
                 speed=record.get("speed"),
-                temperature=record.get("Stryd Temperature") or record.get("temperature"),  # TODO: verify
+                temperature=record.get("Stryd Temperature") or record.get("temperature"),
                 humidity=record.get("Stryd Humidity"),
                 vertical_oscillation=record.get("vertical_oscillation"),
                 ground_contact_time=record.get("stance_time"),
-                left_right_balance=record.get("stance_time_balance"),  #  TODO: also handle cycling balance
+                left_right_balance=record.get("stance_time_balance") or record.get("left_right_balance"),
                 form_power=record.get("Form Power"),
                 leg_spring_stiffness=record.get("Leg Spring Stiffness"),
                 air_power=record.get("Air Power"),
-                dfa_a1=None,  # TODO: get DFA a1
-                artifacts=None,  # TODO: get artifacts
-                respiration_rate=record.get("respiration_rate"),  # TODO: verify
-                front_gear=record.get("front_gear"),  # TODO: verify
-                rear_gear=record.get("rear_gear"),  # TODO: verify
+                dfa_a1=record.get("Alpha1"),
+                artifacts=record.get("Artifacts"),
+                respiration_rate=record.get("unknown_108", 0) / 100 if record.get("unknown_108") else None,
+                front_gear=record.get("FrontGear"),
+                rear_gear=record.get("RearGear"),
             )
             self.db.add(stream)
         await self.db.commit()
 
 # temp code to read fit files - will be removed
 if __name__ == "__main__":
-    with open("i56321200_Long_run.fit", "rb") as f, open("out.txt", "w") as out:
+    with open("i55928721_Recovery.fit", "rb") as f, open("out.txt", "w") as out:
         fit_file = f.read()
         for message in FitFile(fit_file).messages:
             out.write(str(message.mesg_type) + " " + str(message.get_values()) + "\n")
