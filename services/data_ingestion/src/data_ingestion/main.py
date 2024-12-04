@@ -1,6 +1,8 @@
 # Configure logging
+import argparse
 import logging
 
+from data_ingestion.db.database import get_db
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
@@ -9,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from data_ingestion.models import UploadRequest, UploadStatusResponse
 from data_ingestion.config import settings
+import uvicorn
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -37,7 +40,12 @@ redis_client = Redis.from_url(settings.REDIS_URL)
 
 
 @app.post("/activities", response_model=UploadStatusResponse)
-async def start_upload(request: UploadRequest, background_tasks: BackgroundTasks, fit_file: UploadFile = File(...)):
+async def start_upload(
+    request: UploadRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    fit_file: UploadFile = File(...)
+):
     pass
 
 @app.get("/activities/{activity_id}/status", response_model=UploadStatusResponse)
@@ -53,4 +61,21 @@ async def get_upload_status(activity_id: str):
         status=status["status"],
         error_message=status.get("error_message", ""),
         # TODO: fill in the rest of the fields
+    )
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    parser.add_argument("--log-level", type=str, default="info", help="Logging level")
+
+    args = parser.parse_args()
+
+    uvicorn.run(
+        "main:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        log_level=args.log_level,
     )
