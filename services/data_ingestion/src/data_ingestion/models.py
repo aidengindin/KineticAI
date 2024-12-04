@@ -87,7 +87,6 @@ class ActivityLap(BaseModel):
 class UploadRequest(BaseModel):
     user_id: str
     activities: list[Activity]
-    fit_files: list[bytes]
 
 
 class UploadStatusResponse(BaseModel):

@@ -1,7 +1,9 @@
 # Configure logging
 import argparse
+from datetime import datetime
 import logging
 
+from data_ingestion.db.activities import ActivityRepository
 from data_ingestion.db.database import get_db
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +11,7 @@ from prometheus_client import make_asgi_app
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from data_ingestion.models import UploadRequest, UploadStatusResponse
+from data_ingestion.models import UploadRequest, UploadStatus, UploadStatusResponse
 from data_ingestion.config import get_settings
 import uvicorn
 
@@ -41,14 +43,40 @@ app.mount("/metrics", metrics_app)
 redis_client = Redis.from_url(settings.REDIS_URL)
 
 
+async def get_activity_repository(db: AsyncSession = Depends(get_db)) -> ActivityRepository:
+    return ActivityRepository(db)
+
 @app.post("/activities", response_model=UploadStatusResponse)
 async def start_upload(
     request: UploadRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-    fit_file: UploadFile = File(...)
-):
-    pass
+    repository: ActivityRepository = Depends(get_activity_repository),
+    fit_files: list[UploadFile] = File(...)
+) -> UploadStatusResponse:
+    for activity, file in zip(request.activities, fit_files):
+        background_tasks.add_task(
+            repository.create_activity,
+            activity,
+            file,
+        )
+        background_tasks.add_task(
+            repository.store_laps,
+            activity["activity_id"],
+            file,
+        )
+        background_tasks.add_task(
+            repository.store_streams,
+            activity["activity_id"],
+            file,
+        )
+
+    return UploadStatusResponse(
+        status=UploadStatus.PENDING,
+        total_activities=len(request.activities),
+        processed_activities=0,
+        failed_activities=0,
+        last_updated=datetime.now(),
+    )
 
 @app.get("/activities/{activity_id}/status", response_model=UploadStatusResponse)
 async def get_upload_status(activity_id: str):

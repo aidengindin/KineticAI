@@ -7,14 +7,13 @@ class ActivityRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def create_activity(self, activity_data: dict, fit_file: bytes) -> Activity:
+    async def create_activity(self, activity_data: dict, fit_file: bytes) -> None:
         activity = Activity(
             fit_file=fit_file,
             **activity_data
         )
         self.db.add(activity)
         await self.db.commit()
-        return activity
     
     async def store_laps(self, activity_id: str, fit_file: bytes) -> None:
         file = FitFile(fit_file)
