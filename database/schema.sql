@@ -40,10 +40,9 @@ CREATE TABLE gear (
 );
 
 CREATE TABLE activity_lap (
-    id TEXT PRIMARY KEY,
     activity_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
     start_date TIMESTAMPTZ NOT NULL,
-    end_date TIMESTAMPTZ NOT NULL,
     duration FLOAT,
     distance FLOAT,
     average_speed FLOAT,
@@ -51,8 +50,8 @@ CREATE TABLE activity_lap (
     average_cadence FLOAT,
     average_power FLOAT,
     average_lr_balance FLOAT,
-    average_gap FLOAT,
     intensity TEXT,
+    PRIMARY KEY (activity_id, sequence),
     FOREIGN KEY (activity_id) REFERENCES activity(id)
 );
 

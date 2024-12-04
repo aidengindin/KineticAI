@@ -70,6 +70,20 @@ class ActivityStream(BaseModel):
     rear_gear: Optional[int] = None
 
 
+class ActivityLap(BaseModel):
+    activity_id: str
+    sequence: int
+    start_date: datetime
+    duration: Optional[float]
+    distance: Optional[float]
+    average_speed: Optional[float]
+    average_heartrate: Optional[int]
+    average_cadence: Optional[float]
+    average_power: Optional[float]
+    average_lr_balance: Optional[float]
+    intensity: Optional[str]
+
+
 class UploadRequest(BaseModel):
     user_id: str
     activities: list[Activity]

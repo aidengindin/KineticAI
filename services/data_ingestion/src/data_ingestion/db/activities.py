@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fitparse import FitFile
 
-from data_ingestion.models import Activity, ActivityStream
+from data_ingestion.models import Activity, ActivityLap, ActivityStream
 
 class ActivityRepository:
     def __init__(self, db: AsyncSession) -> None:
@@ -16,8 +16,25 @@ class ActivityRepository:
         await self.db.commit()
         return activity
     
-    async def store_laps(self, activity_id: str, laps: list[dict]) -> None:
-        # TODO: Implement this method
+    async def store_laps(self, activity_id: str, fit_file: bytes) -> None:
+        file = FitFile(fit_file)
+        messages = file.messages
+        laps = [message for message in messages if message.mesg_type == "lap"]
+        for index, lap in enumerate(laps):
+            lap_data = ActivityLap(
+                activity_id=activity_id,
+                sequence=index,
+                start_date=lap.get("start_time"),
+                duration=lap.get("total_elapsed_time"),
+                distance=lap.get("total_distance"),
+                average_speed=lap.get("avg_speed"),
+                average_heartrate=lap.get("avg_heart_rate"),
+                average_cadence=lap.get("avg_cadence"),
+                average_power=lap.get("avg_power"),
+                average_lr_balance=lap.get("GCTBalance") or lap.get("left_right_balance"),
+                intensity=lap.get("intensity"),
+            )
+            self.db.add(lap_data)
         await self.db.commit()
 
     async def store_streams(self, activity_id: str, fit_file: bytes) -> None:

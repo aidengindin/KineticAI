@@ -5,3 +5,4 @@ result
 .mypy_cache
 .pytest_cache
 **/*.fit
+**/out.txt

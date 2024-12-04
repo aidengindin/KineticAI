@@ -7,8 +7,8 @@ from prometheus_client import make_asgi_app
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import UploadRequest, UploadStatusResponse
-from src.config import settings
+from data_ingestion.models import UploadRequest, UploadStatusResponse
+from data_ingestion.config import settings
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
