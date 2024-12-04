@@ -10,8 +10,10 @@ from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from data_ingestion.models import UploadRequest, UploadStatusResponse
-from data_ingestion.config import settings
+from data_ingestion.config import get_settings
 import uvicorn
+
+settings = get_settings()
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -20,7 +22,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
-app = FastAPI(title="External Data Gateway")
+app = FastAPI(title="Data Ingestion Service")
 
 # Add CORS middleware
 app.add_middleware(
