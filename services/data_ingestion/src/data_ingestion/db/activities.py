@@ -15,9 +15,8 @@ class ActivityRepository:
         self.db.add(activity)
         await self.db.commit()
     
-    async def store_laps(self, activity_id: str, fit_file: bytes) -> None:
-        file = FitFile(fit_file)
-        messages = file.messages
+    async def store_laps(self, activity_id: str, fit_file: FitFile) -> None:
+        messages = fit_file.messages
         laps = [message for message in messages if message.mesg_type == "lap"]
         for index, lap in enumerate(laps):
             lap_data = ActivityLap(
@@ -36,9 +35,8 @@ class ActivityRepository:
             self.db.add(lap_data)
         await self.db.commit()
 
-    async def store_streams(self, activity_id: str, fit_file: bytes) -> None:
-        file = FitFile(fit_file)
-        messages = file.messages
+    async def store_streams(self, activity_id: str, fit_file: FitFile) -> None:
+        messages = fit_file.messages
         records = [message for message in messages if message.mesg_type == "record"]
         for index, record in enumerate(records):
             stream = ActivityStream(

@@ -90,9 +90,17 @@ class UploadRequest(BaseModel):
 
 
 class UploadStatusResponse(BaseModel):
+    batch_id: str
     status: UploadStatus
     total_activities: int = 0
     processed_activities: int = 0
     failed_activities: int = 0
     error_message: Optional[str] = None
     last_updated: datetime
+
+class ActivityStatusResponse(BaseModel):
+    activity_id: str
+    status: UploadStatus
+    error_message: Optional[str] = None
+    last_updated: datetime
+    completed_tasks: int = 0
