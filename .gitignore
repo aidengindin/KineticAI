@@ -5,5 +5,7 @@ result
 .mypy_cache
 .pytest_cache
 **/*.fit
+**/*.gpx
+**/*.tcx
 **/out.txt
 **/*.csv
