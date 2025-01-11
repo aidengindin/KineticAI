@@ -18,7 +18,7 @@ class DataGenerator(tf.keras.utils.Sequence):
         print("Preprocessing data...")
         self.batch_size = batch_size
         self.seq_length = seq_length
-        self.feature_cols = [col for col in feature_cols if col != 'sport']
+        self.feature_cols = feature_cols
         
         # Convert to numpy arrays for faster access
         self.activities = []
@@ -31,8 +31,6 @@ class DataGenerator(tf.keras.utils.Sequence):
             # Sort by timestamp once
             activity_df = activity_df.sort_values('timestamp')
 
-            sport_binary = float((activity_df['sport'].iloc[0] == 'running'))
-            
             # Pre-interpolate sequences for this activity
             duration = (activity_df['timestamp'].max() - 
                         activity_df['timestamp'].min()).total_seconds()
@@ -51,7 +49,7 @@ class DataGenerator(tf.keras.utils.Sequence):
                 if start_idx + seq_length >= len(activity_df):
                     break
                             
-                sequence = np.zeros((seq_length, len(self.feature_cols) + 1))
+                sequence = np.zeros((seq_length, len(self.feature_cols)))
                 
                 # Interpolate each feature
                 for j, col in enumerate(self.feature_cols):
@@ -61,8 +59,6 @@ class DataGenerator(tf.keras.utils.Sequence):
                         activity_df[col].values[start_idx:start_idx + seq_length + 1]
                     )
 
-                sequence[:, -1] = sport_binary
-                
                 target = activity_df['heart_rate_normalized'].values[start_idx + seq_length]
                 
                 self.activities.append(sequence)
@@ -90,13 +86,32 @@ class WarmupCallback(tf.keras.callbacks.Callback):
         self.max_lr = max_lr
         self.min_lr = min_lr
         self.warmup_epochs = warmup_epochs
+        self.current_lr = None
+    
+    def on_train_begin(self, logs=None):
+        self.current_lr = self.model.optimizer.learning_rate
         
     def on_epoch_begin(self, epoch, logs=None):
         if epoch < self.warmup_epochs:
-            lr = self.min_lr + (self.max_lr - self.min_lr) * (epoch / self.warmup_epochs)
-            tf.keras.backend.set_value(self.model.optimizer.learning_rate, lr)
+            self.current_lr = self.min_lr + (self.max_lr - self.min_lr) * (epoch / self.warmup_epochs)
+            tf.keras.backend.set_value(self.model.optimizer.learning_rate, self.current_lr)
         else:
             tf.keras.backend.set_value(self.model.optimizer.learning_rate, self.max_lr)
+
+class WarmupSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, max_lr=0.004, min_lr=1e-6, warmup_epochs=10, steps_per_epoch=None):
+        super().__init__()
+        self.max_lr = tf.constant(max_lr, dtype=tf.float32)
+        self.min_lr = tf.constant(min_lr, dtype=tf.float32)
+        self.warmup_steps = tf.constant(warmup_epochs * steps_per_epoch, dtype=tf.float32)
+        
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        return tf.cond(
+            step < self.warmup_steps,
+            lambda: self.min_lr + (self.max_lr - self.min_lr) * (step / self.warmup_steps),
+            lambda: self.max_lr
+        )
 
 def generate_data(df, feature_cols, test_fraction=0.2, batch_size=4096, seq_length=120):
     # Shuffle activity IDs
@@ -119,7 +134,10 @@ def build_model(feature_cols,
                 l2_reg=0.05,
                 lr=0.008,
                 lstm_units=64,
+                steps_per_epoch=10,
                 ):
+
+    warmup_schedule = WarmupSchedule(max_lr=lr, min_lr=1e-6, warmup_epochs=10, steps_per_epoch=steps_per_epoch)
 
     # Build model
     inputs = Input(shape=(seq_length, len(feature_cols)))
@@ -142,7 +160,7 @@ def build_model(feature_cols,
     outputs = Dense(1)(x)  # Predict next heart rate
 
     model = Model(inputs=inputs, outputs=outputs)
-    optimizer = Adam(learning_rate=lr, clipnorm=1.0)
+    optimizer = Adam(learning_rate=warmup_schedule, clipnorm=1.0)
     model.compile(optimizer=optimizer, loss='mse')
 
     return model
@@ -160,14 +178,14 @@ def train_model(model, train_gen, val_gen, lr=0.008, epochs=1000):
         patience=5,
         min_lr=1e-6
     )
-    warmup = WarmupCallback(max_lr=lr, min_lr=1e-6, warmup_epochs=10)
 
     with tf.device('/GPU:0'):
         history = model.fit(
             train_gen,
             validation_data=val_gen,
             epochs=epochs,
-            callbacks=[early_stopping, lr_scheduler, warmup],
+            # callbacks=[early_stopping, lr_scheduler],
+            callbacks=[early_stopping]
         )
     return history
 
@@ -176,9 +194,10 @@ def optimize_hyperparameters(df, feature_cols):
     results = []
     for batch_size in [2048, 4096, 8192, 16384]:
         train_gen, val_gen = generate_data(df, feature_cols, batch_size=batch_size)
+        steps_per_epoch = len(train_gen)
         for lr in [0.001, 0.002, 0.004, 0.008]:
-            model = build_model(feature_cols, lr=np.sqrt(batch_size / 2048) * lr)
-            history = train_model(model, train_gen, val_gen, lr=lr, epochs=100)
+            model = build_model(feature_cols, lr=np.sqrt(batch_size / 2048) * lr, steps_per_epoch=steps_per_epoch)
+            history = train_model(model, train_gen, val_gen, lr=lr, epochs=20)
             mse = history.history['val_loss'][-1]
             results.append({'batch_size': batch_size, 'lr': lr, 'mse': mse})
             print(f"Batch size: {batch_size}, Learning rate: {lr}, MSE: {mse:.4f}")
@@ -189,12 +208,13 @@ def optimize_hyperparameters(df, feature_cols):
     best_batch_size = best['batch_size'].values[0]
     best_lr = best['lr'].values[0] * np.sqrt(best_batch_size / 2048)
     train_gen, val_gen = generate_data(df, feature_cols, batch_size=best_batch_size)
+    steps_per_epoch = len(train_gen)
 
     print('Phase 2: LSTM units')
     results = []
     for lstm_units in [32, 64, 128, 256]:
-        model = build_model(feature_cols, lr=best_lr, lstm_units=lstm_units)
-        history = train_model(model, train_gen, val_gen, lr=best_lr, epochs=100)
+        model = build_model(feature_cols, lr=best_lr, lstm_units=lstm_units, steps_per_epoch=steps_per_epoch)
+        history = train_model(model, train_gen, val_gen, lr=best_lr, epochs=15)
         mse = history.history['val_loss'][-1]
         results.append({'lstm_units': lstm_units, 'mse': mse})
         print(f"LSTM units: {lstm_units}, MSE: {mse:.4f}")
@@ -207,8 +227,8 @@ def optimize_hyperparameters(df, feature_cols):
     print('Phase 3: Regularization')
     results = []
     for l2_reg in [0.01, 0.02, 0.04, 0.08]:
-        model = build_model(feature_cols, lr=best_lr, lstm_units=best_lstm_units, l2_reg=l2_reg)
-        history = train_model(model, train_gen, val_gen, lr=best_lr, epochs=100)
+        model = build_model(feature_cols, lr=best_lr, lstm_units=best_lstm_units, l2_reg=l2_reg, steps_per_epoch=steps_per_epoch)
+        history = train_model(model, train_gen, val_gen, lr=best_lr, epochs=15)
         mse = history.history['val_loss'][-1]
         results.append({'l2_reg': l2_reg, 'mse': mse})
         print(f"L2 regularization: {l2_reg}, MSE: {mse:.4f}")
@@ -221,8 +241,8 @@ def optimize_hyperparameters(df, feature_cols):
     print('Phase 4: Sequence length')
     results = []
     for seq_length in [60, 120, 240, 480]:
-        model = build_model(feature_cols, lr=best_lr, lstm_units=best_lstm_units, l2_reg=best_l2_reg, seq_length=seq_length)
-        history = train_model(model, train_gen, val_gen, lr=best_lr, epochs=100)
+        model = build_model(feature_cols, lr=best_lr, lstm_units=best_lstm_units, l2_reg=best_l2_reg, steps_per_epoch=steps_per_epoch, seq_length=seq_length)
+        history = train_model(model, train_gen, val_gen, lr=best_lr, epochs=10)
         mse = history.history['val_loss'][-1]
         results.append({'seq_length': seq_length, 'mse': mse})
         print(f"Sequence length: {seq_length}, MSE: {mse:.4f}")
@@ -306,8 +326,9 @@ if __name__ == "__main__":
 
     tf.keras.utils.set_random_seed(42)
 
-    df = pd.read_csv('records_with_grade.csv')
+    df = pd.read_csv('records_df.csv')
     df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['sport'] = df['sport'].map({'running': 1, 'cycling': 0})
 
     # Scale features
     feature_cols = ['speed', 'cadence', 'power', 'distance',
