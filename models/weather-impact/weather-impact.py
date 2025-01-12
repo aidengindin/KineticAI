@@ -130,7 +130,7 @@ def generate_data(df, feature_cols, test_fraction=0.2, batch_size=4096, seq_leng
     return train_gen, val_gen
 
 def build_model(feature_cols,
-                seq_length=120,
+                seq_length=60,
                 l2_reg=0.05,
                 lr=0.008,
                 lstm_units=64,
