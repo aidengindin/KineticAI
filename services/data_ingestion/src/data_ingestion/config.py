@@ -46,4 +46,5 @@ ENV_SETTINGS_MAP = {
 @lru_cache
 def get_settings() -> Settings:
     env_name = os.getenv("ENV_NAME", "development")
-    return ENV_SETTINGS_MAP.get(env_name, Settings)
+    settings_class = ENV_SETTINGS_MAP.get(env_name, Settings)
+    return settings_class()

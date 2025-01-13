@@ -12,7 +12,7 @@ class ActivityRepository:
             fit_file=fit_file,
             **activity_data
         )
-        self.db.add(activity)
+        await self.db.add(activity)
         await self.db.commit()
     
     async def store_laps(self, activity_id: str, fit_file: FitFile) -> None:
@@ -32,7 +32,7 @@ class ActivityRepository:
                 average_lr_balance=lap.get("GCTBalance") or lap.get("left_right_balance"),
                 intensity=lap.get("intensity"),
             )
-            self.db.add(lap_data)
+            await self.db.add(lap_data)
         await self.db.commit()
 
     async def store_streams(self, activity_id: str, fit_file: FitFile) -> None:
@@ -65,12 +65,5 @@ class ActivityRepository:
                 front_gear=record.get("FrontGear"),
                 rear_gear=record.get("RearGear"),
             )
-            self.db.add(stream)
+            await self.db.add(stream)
         await self.db.commit()
-
-# temp code to read fit files - will be removed
-if __name__ == "__main__":
-    with open("i55928721_Recovery.fit", "rb") as f, open("out.txt", "w") as out:
-        fit_file = f.read()
-        for message in FitFile(fit_file).messages:
-            out.write(str(message.mesg_type) + " " + str(message.get_values()) + "\n")
