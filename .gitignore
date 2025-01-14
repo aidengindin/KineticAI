@@ -9,3 +9,5 @@ result
 **/*.tcx
 **/out.txt
 **/*.csv
+**/.coverage
+**/coverage*
