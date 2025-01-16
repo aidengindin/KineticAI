@@ -333,10 +333,11 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
 
     return app
 
+# Create the app at module level
+app = create_app()
+
 def main():
     """Main entry point for the CLI."""
-    app = create_app()
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run the server on")
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
@@ -346,7 +347,7 @@ def main():
     args = parser.parse_args()
 
     uvicorn.run(
-        "main:app",
+        "data_ingestion.main:app",
         host=args.host,
         port=args.port,
         reload=args.reload,
