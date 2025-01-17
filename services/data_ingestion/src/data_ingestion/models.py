@@ -20,6 +20,7 @@ class Gear(BaseModel):
 
 class Activity(BaseModel):
     id: str
+    user_id: Optional[str] = None
     start_date: datetime
     name: str
     description: Optional[str] = None

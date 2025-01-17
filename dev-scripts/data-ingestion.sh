@@ -37,6 +37,12 @@ for service in timescaledb redis; do
     wait_for_service $service
 done
 
+echo "Initializing database schema..."
+if ! docker-compose -f services/data_ingestion/docker-compose.yml exec -T timescaledb psql -U dev_user -d dev_db < database/schema.sql; then
+    echo "Failed to initialize database schema"
+    exit 1
+fi
+
 echo "All data ingestion development services are ready!"
 echo "Starting data ingestion service..."
 poetry run python -m data_ingestion.main --host 0.0.0.0 --port 8000 --reload --log-level debug &

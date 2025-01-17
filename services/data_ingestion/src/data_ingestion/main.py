@@ -1,5 +1,6 @@
 import argparse
 from datetime import datetime
+from enum import Enum
 import json
 import logging
 from typing import Optional, Any
@@ -12,12 +13,19 @@ from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from fitparse import FitFile
 from prometheus_client import make_asgi_app
-from redis import Redis
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import ValidationError
 
 from data_ingestion.models import ActivityStatusResponse, UploadRequest, UploadStatus, UploadStatusResponse
 from data_ingestion.config import get_settings
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
@@ -29,8 +37,47 @@ def json_dumps(obj: Any) -> str:
     """Helper function to serialize objects with datetime support."""
     return json.dumps(obj, cls=DateTimeEncoder)
 
+def clean_none_values(d: dict) -> dict:
+    """Remove None values from a dictionary and convert datetime to ISO format."""
+    cleaned = {}
+    for k, v in d.items():
+        if v is not None:
+            if isinstance(v, datetime):
+                cleaned[k] = v.isoformat()
+            elif isinstance(v, Enum):
+                cleaned[k] = v.value
+            else:
+                cleaned[k] = v
+    return cleaned
+
 async def get_activity_repository(db: AsyncSession = Depends(get_db)) -> ActivityRepository:
     return ActivityRepository(db)
+
+async def update_activity_status(activity_id: str, status: UploadStatus, error_message: Optional[str] = None) -> None:
+    """Update the status of an activity in Redis."""
+    try:
+        # Get current status to preserve completed_tasks
+        key = f"activity:{activity_id}"
+        current_status = await app.state.redis_client.hgetall(key)
+        completed_tasks = int(current_status.get("completed_tasks", 0)) if current_status else 0
+
+        activity_status = ActivityStatusResponse(
+            activity_id=activity_id,
+            status=status,
+            error_message=error_message,
+            last_updated=datetime.now(),
+            completed_tasks=completed_tasks,
+        )
+        await app.state.redis_client.hset(
+            key,
+            mapping=clean_none_values(activity_status.model_dump())
+        )
+    except Exception as e:
+        logger.error(f"Failed to update activity status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update activity status"
+        ) from e
 
 def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
     settings = get_settings()
@@ -53,15 +100,23 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
 
     # Initialize Redis client if not provided
     if redis_client is None:
-        redis_client = Redis.from_url(settings.REDIS_URL)
+        logging.info(f"Connecting to Redis at: {settings.REDIS_URL}")
+        redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
     app.state.redis_client = redis_client
 
-    # Configure logging after app is created
-    logging.basicConfig(
-        level=settings.LOG_LEVEL,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    logger = logging.getLogger(__name__)
+    @app.on_event("startup")
+    async def startup_event():
+        # Test Redis connection
+        try:
+            await app.state.redis_client.ping()
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis: {str(e)}")
+            raise
+
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        # Close Redis connection
+        await app.state.redis_client.close()
 
     @app.post("/activities", response_model=UploadStatusResponse)
     async def start_upload(
@@ -103,10 +158,12 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
             
             # Initialize batch status in Redis
             try:
-                await app.state.redis_client.set(f"batch:{batch_id}", json_dumps(batch_status.model_dump()))
+                await app.state.redis_client.hset(
+                    f"batch:{batch_id}",
+                    mapping=clean_none_values(batch_status.model_dump())
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize batch status: {str(e)}")
-                # Don't wrap this in another try-except since we want this specific error to propagate
                 raise HTTPException(
                     status_code=500,
                     detail="Failed to initialize batch status"
@@ -114,6 +171,9 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
 
             for activity, file in zip(request.activities, fit_files):
                 try:
+                    # Set user_id from request
+                    activity.user_id = request.user_id
+                    
                     # Read file content first
                     file_content = await file.read()
                     
@@ -121,7 +181,9 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                     try:
                         fit_file = FitFile(file_content)
                         # Access messages to verify file is readable
-                        next(fit_file.messages)
+                        messages = list(fit_file.get_messages())
+                        if not messages:
+                            raise ValueError("No messages found in FIT file")
                     except Exception as e:
                         logger.error(f"Invalid FIT file for activity {activity.id}: {str(e)}")
                         # Initialize activity with FAILED status
@@ -132,17 +194,10 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                             last_updated=datetime.now(),
                             completed_tasks=0,
                         )
-                        try:
-                            await app.state.redis_client.set(
-                                f"activity:{activity.id}",
-                                json_dumps(activity_status.model_dump())
-                            )
-                        except Exception as redis_err:
-                            logger.error(f"Failed to update activity status: {str(redis_err)}")
-                            raise HTTPException(
-                                status_code=500,
-                                detail="Failed to update activity status"
-                            ) from redis_err
+                        await app.state.redis_client.hset(
+                            f"activity:{activity.id}",
+                            mapping=clean_none_values(activity_status.model_dump())
+                        )
                         continue
 
                     # Initialize activity with PENDING status only if validation passed
@@ -152,17 +207,10 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                         last_updated=datetime.now(),
                         completed_tasks=0,
                     )
-                    try:
-                        await app.state.redis_client.set(
-                            f"activity:{activity.id}",
-                            json_dumps(activity_status.model_dump())
-                        )
-                    except Exception as redis_err:
-                        logger.error(f"Failed to update activity status: {str(redis_err)}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail="Failed to update activity status"
-                        ) from redis_err
+                    await app.state.redis_client.hset(
+                        f"activity:{activity.id}",
+                        mapping=clean_none_values(activity_status.model_dump())
+                    )
 
                     await update_activity_status(activity.id, UploadStatus.IN_PROGRESS)
 
@@ -172,7 +220,7 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                         repository.create_activity,
                         activity.id,
                         num_tasks,
-                        activity,
+                        activity,  # No need for model_copy since we set user_id directly
                         file_content,
                     )
                     background_tasks.add_task(
@@ -197,18 +245,11 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                     raise
                 except Exception as e:
                     logger.error(f"Failed to process activity {activity.id}: {str(e)}")
-                    try:
-                        await update_activity_status(
-                            activity.id,
-                            UploadStatus.FAILED,
-                            str(e)
-                        )
-                    except Exception as redis_err:
-                        logger.error(f"Failed to update activity status: {str(redis_err)}")
-                        raise HTTPException(
-                            status_code=500,
-                            detail="Failed to update activity status"
-                        ) from redis_err
+                    await update_activity_status(
+                        activity.id,
+                        UploadStatus.FAILED,
+                        str(e)
+                    )
                     continue
 
             return batch_status
@@ -222,11 +263,22 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
             logger.error(f"Unexpected error in start_upload: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error") from e
 
-    @app.get("/activities/{activity_id}/status", response_model=UploadStatusResponse)
-    async def get_upload_status(activity_id: str):
-        status_key = f"status:{activity_id}"
+    @app.get("/activities/{activity_id}/status", response_model=ActivityStatusResponse)
+    async def get_activity_status(activity_id: str):
         try:
-            status = await app.state.redis_client.hgetall(status_key)
+            status = await app.state.redis_client.hgetall(f"activity:{activity_id}")
+            if not status:
+                raise HTTPException(status_code=404, detail="Activity not found")
+
+            return ActivityStatusResponse(
+                activity_id=activity_id,
+                status=UploadStatus(status["status"]),
+                error_message=status.get("error_message"),
+                last_updated=datetime.fromisoformat(status["last_updated"]),
+                completed_tasks=int(status.get("completed_tasks", 0)),
+            )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to get status for activity {activity_id}: {str(e)}")
             raise HTTPException(
@@ -234,87 +286,29 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                 detail=f"Redis connection error: {str(e)}"
             )
 
-        if not status:
-            raise HTTPException(status_code=404, detail="Activity not found")
-
-        return UploadStatusResponse(
-            batch_id=status["batch_id"],
-            status=status["status"],
-            error_message=status.get("error_message", ""),
-            last_updated=datetime.fromisoformat(status["last_updated"]),
-            total_activities=status.get("total_activities", 1),
-            processed_activities=status.get("processed_activities", 0),
-            failed_activities=status.get("failed_activities", 0),
-        )
-
-    async def update_activity_status(
-        activity_id: str,
-        status: UploadStatus,
-        error: Optional[str] = None
-    ) -> None:
-        key = f"activity:{activity_id}"
-        current = await app.state.redis_client.get(key)
-        if current:
-            current_status = json.loads(current)
-            current_status["status"] = status.value
-            if error:
-                current_status["error"] = error
-            current_status["last_updated"] = datetime.now().isoformat()
-            await app.state.redis_client.set(key, json_dumps(current_status))
-
     async def increment_completed_tasks(activity_id: str, num_tasks: int):
         key = f"activity:{activity_id}"
-        current = await app.state.redis_client.get(key)
-        if current:
-            current_status = json.loads(current)
+        try:
             pipe = app.state.redis_client.pipeline()
             await pipe.hincrby(key, "completed_tasks", 1)
             await pipe.hget(key, "completed_tasks")
             completed = (await pipe.execute())[1]
+            
             if int(completed) == num_tasks:
-                current_status["status"] = UploadStatus.COMPLETED.value
-            current_status["last_updated"] = datetime.now().isoformat()
-            await app.state.redis_client.set(key, json_dumps(current_status))
+                await update_activity_status(activity_id, UploadStatus.COMPLETED)
+        except Exception as e:
+            logger.error(f"Failed to increment completed tasks for activity {activity_id}: {str(e)}")
 
     async def process_with_status(task_func, activity_id: str, num_tasks: int, *args, **kwargs):
-        """Process a task with status updates.
-        
-        Args:
-            task_func: The async function to execute
-            activity_id: The ID of the activity being processed
-            num_tasks: Total number of tasks for this activity
-            *args: Arguments to pass to task_func
-            **kwargs: Keyword arguments to pass to task_func
-        """
         try:
-            # Get current status
-            key = f"activity:{activity_id}"
-            current = await app.state.redis_client.get(key)
-            if current:
-                current_status = json.loads(current)
-                # Only update to in_progress if currently pending
-                if current_status["status"] == UploadStatus.PENDING.value:
-                    await update_activity_status(activity_id, UploadStatus.IN_PROGRESS)
-                # Don't proceed if already failed
-                elif current_status["status"] == UploadStatus.FAILED.value:
-                    logging.info(f"Skipping {task_func.__name__} for activity {activity_id} as it's already failed")
-                    return
-            
-            # Execute the task
+            logger.debug(f"Starting background task {task_func.__name__} for activity {activity_id}")
             await task_func(*args, **kwargs)
-            
-            try:
-                # Try to increment completed tasks
-                await increment_completed_tasks(activity_id, num_tasks)
-            except Exception as e:
-                # Log Redis error but don't fail the task
-                logging.error(f"Failed to increment completed tasks for activity {activity_id}: {str(e)}")
-                # Still consider the task successful since the main operation completed
-                return
-            
+            logger.debug(f"Completed background task {task_func.__name__} for activity {activity_id}")
+            await increment_completed_tasks(activity_id, num_tasks)
+            logger.debug(f"Incremented completed tasks for activity {activity_id}")
         except Exception as e:
             error_message = f"Error in {task_func.__name__}: {str(e)}"
-            logging.error(f"Failed to process activity {activity_id}: {error_message}")
+            logger.error(f"Failed to process activity {activity_id}: {error_message}")
             
             try:
                 # Try to update status to failed
@@ -325,7 +319,7 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                 )
             except Exception as redis_err:
                 # Log Redis error but don't mask the original error
-                logging.error(f"Failed to update error status for activity {activity_id}: {str(redis_err)}")
+                logger.error(f"Failed to update error status for activity {activity_id}: {str(redis_err)}")
             
             # Don't re-raise the error since this is a background task
             # Just log it and let the task complete

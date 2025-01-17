@@ -1,4 +1,19 @@
-CREATE TABLE activity (
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    first_name TEXT,
+    last_name TEXT
+);
+
+-- Insert test user
+INSERT INTO users (id, first_name, last_name) VALUES ('i95355', 'Test', 'User');
+
+CREATE TABLE gear (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    distance FLOAT
+);
+
+CREATE TABLE activities (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     start_date TIMESTAMP NOT NULL,
@@ -23,23 +38,11 @@ CREATE TABLE activity (
     carbs_ingested FLOAT,
     normalized_power INTEGER,
     training_load INTEGER,
-    FOREIGN KEY (user_id) REFERENCES user(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (gear_id) REFERENCES gear(id)
 );
 
-CREATE TABLE user (
-    id TEXT PRIMARY KEY,
-    first_name TEXT,
-    last_name TEXT
-);
-
-CREATE TABLE gear (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    distance FLOAT
-);
-
-CREATE TABLE activity_lap (
+CREATE TABLE activity_laps (
     activity_id TEXT NOT NULL,
     sequence INTEGER NOT NULL,
     start_date TIMESTAMPTZ NOT NULL,
@@ -52,10 +55,10 @@ CREATE TABLE activity_lap (
     average_lr_balance FLOAT,
     intensity TEXT,
     PRIMARY KEY (activity_id, sequence),
-    FOREIGN KEY (activity_id) REFERENCES activity(id)
+    FOREIGN KEY (activity_id) REFERENCES activities(id)
 );
 
-CREATE TABLE activity_stream (
+CREATE TABLE activity_streams (
     time TIMESTAMPTZ NOT NULL,
     activity_id TEXT NOT NULL,
     sequence INTEGER NOT NULL,
@@ -69,7 +72,7 @@ CREATE TABLE activity_stream (
     speed FLOAT,
     temperature FLOAT,
     humidity FLOAT,
-    vertical_osciillation FLOAT,
+    vertical_oscillation FLOAT,
     ground_contact_time FLOAT,
     left_right_balance FLOAT,
     form_power INTEGER,
@@ -81,6 +84,8 @@ CREATE TABLE activity_stream (
     front_gear INTEGER,
     rear_gear INTEGER,
     PRIMARY KEY (time, activity_id, sequence),
-    FOREIGN KEY (activity_id) REFERENCES activity(id)
+    FOREIGN KEY (activity_id) REFERENCES activities(id)
 );
-SELECT create_hypertable('activity_stream', 'time');
+
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+SELECT create_hypertable('activity_streams', 'time');
