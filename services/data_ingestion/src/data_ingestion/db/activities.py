@@ -43,7 +43,7 @@ class ActivityRepository:
         
         # Create SQLAlchemy model instance
         activity = Activity(**activity_dict)
-        self.db.add(activity)
+        await self.db.add(activity)
         await self.db.commit()
     
     async def store_laps(self, activity_id: str, fit_file: FitFile) -> None:
@@ -88,7 +88,7 @@ class ActivityRepository:
                 )
                 # Convert to SQLAlchemy model
                 db_lap = ActivityLap(**lap_data.model_dump())
-                self.db.add(db_lap)
+                await self.db.add(db_lap)
                 logger.debug(f"Added lap {index} for activity {activity_id}")
             except Exception as e:
                 logger.error(f"Error processing lap {index} for activity {activity_id}: {str(e)}")

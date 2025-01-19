@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Any
 import uuid
 import uvicorn
+from contextlib import asynccontextmanager
 
 from data_ingestion.db.activities import ActivityRepository
 from data_ingestion.db.database import get_db
@@ -79,11 +80,35 @@ async def update_activity_status(activity_id: str, status: UploadStatus, error_m
             detail="Failed to update activity status"
         ) from e
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI application."""
+    # Startup
+    try:
+        if not hasattr(app.state, "redis_client"):
+            app.state.redis_client = Redis.from_url(get_settings().REDIS_URL, decode_responses=True)
+        # Test Redis connection
+        await app.state.redis_client.ping()
+        logger.info("Successfully connected to Redis")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis: {str(e)}")
+        raise
+    
+    yield  # Application runs here
+    
+    # Shutdown
+    try:
+        if hasattr(app.state, "redis_client"):
+            await app.state.redis_client.close()
+            logger.info("Successfully closed Redis connection")
+    except Exception as e:
+        logger.error(f"Error closing Redis connection: {str(e)}")
+
 def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
     settings = get_settings()
     
     # Initialize FastAPI app
-    app = FastAPI(title="Data Ingestion Service")
+    app = FastAPI(title="Data Ingestion Service", lifespan=lifespan)
 
     # Add CORS middleware
     app.add_middleware(
@@ -103,20 +128,6 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
         logging.info(f"Connecting to Redis at: {settings.REDIS_URL}")
         redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
     app.state.redis_client = redis_client
-
-    @app.on_event("startup")
-    async def startup_event():
-        # Test Redis connection
-        try:
-            await app.state.redis_client.ping()
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis: {str(e)}")
-            raise
-
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        # Close Redis connection
-        await app.state.redis_client.close()
 
     @app.post("/activities", response_model=UploadStatusResponse)
     async def start_upload(
