@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "kinetic-common"
+version = "0.1.0"
+description = "Common models and utilities for Kinetic AI services"
+authors = ["Aiden Gindin <aiden@aidengindin.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+sqlalchemy = "^2.0.23"
+pydantic = "^2.5.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api" 

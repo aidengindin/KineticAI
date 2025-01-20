@@ -29,6 +29,7 @@ types-redis = "^4.6.0.20241004"
 httpx = "^0.28.0"
 python-multipart = "^0.0.20"
 greenlet = "^2.0.0"
+kinetic-common = {path = "../kinetic-common", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

@@ -5,8 +5,9 @@ from datetime import datetime
 import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from data_ingestion.main import create_app, get_activity_repository, json_dumps
-from data_ingestion.models import UploadRequest, Activity, UploadStatus
+from data_ingestion.main import app, create_app, get_activity_repository, json_dumps
+from data_ingestion.models import UploadRequest, UploadStatus
+from kinetic_common.models import PydanticActivity as Activity
 import asyncio
 from typing import Optional
 
@@ -81,16 +82,16 @@ def mock_redis():
 @pytest.fixture
 def sample_activity():
     """Create a sample activity for testing."""
-    return Activity(
-        id="test123",
-        start_date=datetime.now(),
-        name="Morning Run",
-        sport_type="running",
-        duration=3600.0,
-        distance=10000.0,
-        average_speed=2.78,
-        average_heartrate=150,
-    )
+    return {
+        "id": "test123",
+        "start_date": datetime.now(),
+        "name": "Morning Run",
+        "sport_type": "running",
+        "duration": 3600.0,
+        "distance": 10000.0,
+        "average_speed": 2.78,
+        "average_heartrate": 150,
+    }
 
 @pytest.fixture
 def upload_request(sample_activity):
@@ -181,7 +182,7 @@ async def test_start_upload(
             await asyncio.sleep(1)
             
             # Verify activity was processed
-            activity_id = upload_request.activities[0].id
+            activity_id = upload_request.activities[0]["id"]
             
             # Print all status updates for debugging
             print("\nAll status updates:")
@@ -378,7 +379,7 @@ async def test_process_with_status_error(
             await asyncio.sleep(0.5)
             
             # Check that error status was set
-            activity_id = upload_request.activities[0].id
+            activity_id = upload_request.activities[0]["id"]
             
             # Verify the mock was called
             mock_update.assert_called()
@@ -522,7 +523,7 @@ async def test_start_upload_redis_activity_failure(
             await asyncio.sleep(0.5)
             
             # Check that error status was set
-            activity_id = upload_request.activities[0].id
+            activity_id = upload_request.activities[0]["id"]
             
             # Verify the mock was called
             mock_update.assert_called()

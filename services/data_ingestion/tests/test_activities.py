@@ -4,10 +4,15 @@ from datetime import datetime
 from fitparse import FitFile
 
 from data_ingestion.db.activities import ActivityRepository
-from data_ingestion.models import Activity as PydanticActivity
-from data_ingestion.models import ActivityLap as PydanticActivityLap
-from data_ingestion.models import ActivityStream as PydanticActivityStream
-from data_ingestion.db.models import Activity, ActivityLap, ActivityStream
+from kinetic_common.models import (
+    PydanticActivity,
+    PydanticActivityLap,
+    PydanticActivityStream,
+    Activity,
+    ActivityLap,
+    ActivityStream,
+)
+from data_ingestion.models import UploadStatus
 
 @pytest.fixture
 def mock_db():

@@ -1,12 +1,16 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fitparse import FitFile
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import re
 
-from data_ingestion.models import Activity as PydanticActivity
-from data_ingestion.models import ActivityLap as PydanticActivityLap
-from data_ingestion.models import ActivityStream as PydanticActivityStream
-from data_ingestion.db.models import Activity, ActivityLap, ActivityStream
+from kinetic_common.models import (
+    Activity,
+    ActivityLap,
+    ActivityStream,
+    PydanticActivity,
+    PydanticActivityLap,
+    PydanticActivityStream,
+)
 
 logger = logging.getLogger(__name__)
 

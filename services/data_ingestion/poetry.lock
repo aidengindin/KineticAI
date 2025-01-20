@@ -1041,6 +1041,23 @@ files = [
 ]
 
 [[package]]
+name = "kinetic-common"
+version = "0.1.0"
+description = "Common models and utilities for Kinetic AI services"
+optional = false
+python-versions = "^3.11"
+files = []
+develop = true
+
+[package.dependencies]
+pydantic = "^2.5.2"
+sqlalchemy = "^2.0.23"
+
+[package.source]
+type = "directory"
+url = "../kinetic-common"
+
+[[package]]
 name = "kombu"
 version = "5.4.2"
 description = "Messaging library for Python."
@@ -2136,4 +2153,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "3.11.10"
-content-hash = "12372553799b9779208b9697d82bcf49b9600639854f449fd093805c2f436975"
+content-hash = "668427abddf5553b0e1f5309325a8c3552269d78fb61c608c768cdaf762a85b9"

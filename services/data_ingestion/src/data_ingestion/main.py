@@ -18,8 +18,14 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import ValidationError
 
-from data_ingestion.models import ActivityStatusResponse, UploadRequest, UploadStatus, UploadStatusResponse
-from data_ingestion.config import get_settings
+from data_ingestion.config import Settings, get_settings
+from data_ingestion.models import (
+    UploadStatus,
+    ActivityStatusResponse,
+    UploadStatusResponse,
+    UploadRequest,
+)
+from kinetic_common.models import PydanticActivity
 
 # Configure logging
 logging.basicConfig(
@@ -182,6 +188,9 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
 
             for activity, file in zip(request.activities, fit_files):
                 try:
+                    # Convert dictionary to PydanticActivity
+                    activity = PydanticActivity(**activity)
+                    
                     # Set user_id from request
                     activity.user_id = request.user_id
                     

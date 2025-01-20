@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 
+from kinetic_common.models import Base
 from data_ingestion.config import get_settings
 
 Base = declarative_base()
