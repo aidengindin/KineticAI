@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import class_mapper
 
 from kinetic_common.models import (
     Activity,
@@ -11,6 +12,15 @@ from kinetic_common.models import (
     PydanticActivityLap,
     PydanticActivityStream,
 )
+
+def model_to_dict(obj):
+    """Convert SQLAlchemy model instance to dictionary."""
+    mapper = class_mapper(obj.__class__)
+    return {
+        column.key: getattr(obj, column.key)
+        for column in mapper.columns
+        if hasattr(obj, column.key) and getattr(obj, column.key) is not None
+    }
 
 class ActivityRepository:
     def __init__(self, db: AsyncSession):
@@ -32,7 +42,7 @@ class ActivityRepository:
         if activity is None:
             return None
             
-        return PydanticActivity.model_validate(activity)
+        return PydanticActivity.model_validate(model_to_dict(activity))
 
     async def get_activities(
         self,
@@ -40,8 +50,8 @@ class ActivityRepository:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         sport_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> List[PydanticActivity]:
         """Get activities for a user with optional filters.
         
@@ -66,12 +76,16 @@ class ActivityRepository:
             stmt = stmt.where(Activity.sport_type == sport_type)
             
         stmt = stmt.order_by(Activity.start_date.desc())
-        stmt = stmt.limit(limit).offset(offset)
+            
+        if limit:
+            stmt = stmt.limit(limit)
+        if offset:
+            stmt = stmt.offset(offset)
         
         result = await self.db.execute(stmt)
         activities = result.scalars().all()
         
-        return [PydanticActivity.model_validate(activity) for activity in activities]
+        return [PydanticActivity.model_validate(model_to_dict(activity)) for activity in activities]
 
     async def get_activity_laps(self, activity_id: str) -> List[PydanticActivityLap]:
         """Get all laps for an activity.
@@ -88,7 +102,7 @@ class ActivityRepository:
         result = await self.db.execute(stmt)
         laps = result.scalars().all()
         
-        return [PydanticActivityLap.model_validate(lap) for lap in laps]
+        return [PydanticActivityLap.model_validate(model_to_dict(lap)) for lap in laps]
 
     async def get_activity_streams(
         self,
@@ -120,4 +134,4 @@ class ActivityRepository:
         result = await self.db.execute(stmt)
         streams = result.scalars().all()
         
-        return [PydanticActivityStream.model_validate(stream) for stream in streams] 
+        return [PydanticActivityStream.model_validate(model_to_dict(stream)) for stream in streams] 
