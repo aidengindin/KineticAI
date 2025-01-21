@@ -37,6 +37,12 @@ for service in timescaledb; do
     wait_for_service $service
 done
 
+echo "Initializing database schema..."
+if ! docker-compose -f services/data_retrieval/docker-compose.yml exec -T timescaledb psql -U dev_user -d dev_db < database/schema.sql; then
+    echo "Failed to initialize database schema"
+    exit 1
+fi
+
 echo "All data retrieval development services are ready!"
 echo "Starting data retrieval service..."
 poetry run python -m data_retrieval.main --host 0.0.0.0 --port 8001 --reload --log-level debug &
