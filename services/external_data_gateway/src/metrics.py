@@ -8,4 +8,8 @@ ACTIVITY_PROCESSING_TIME = Histogram(
     "activity_processing_seconds", "Time spent processing activities", ["operation"]
 )
 
+GEAR_PROCESSING_TIME = Histogram(
+    "gear_processing_seconds", "Time spent processing gear", ["operation"]
+)
+
 ACTIVE_SYNCS = Gauge("active_syncs", "Number of active sync operations")

@@ -12,10 +12,6 @@ class SyncStatus(str, Enum):
     FAILED = "failed"
 
 
-class Gear(BaseModel):
-    id: str
-    name: str
-    distance: float
 
 
 class Activity(BaseModel):
