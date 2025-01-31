@@ -27,4 +27,15 @@ class UploadStatusResponse(BaseModel):
 
 class UploadRequest(BaseModel):
     user_id: str
-    activities: List[dict] 
+    activities: List[dict]
+
+class GearUploadRequest(BaseModel):
+    user_id: str
+    gear: dict
+
+class GearStatusResponse(BaseModel):
+    user_id: str
+    gear: dict
+    status: UploadStatus
+    error_message: Optional[str] = None
+    last_updated: datetime

@@ -4,13 +4,17 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
-
 import aiohttp
 import backoff
 from redis import Redis
+
 from src.config import settings
-from src.metrics import ACTIVE_SYNCS, ACTIVITY_PROCESSING_TIME, SYNC_REQUESTS_TOTAL
-from src.models import Activity, SyncStatus, SyncStatusResponse
+from src.metrics import ACTIVE_SYNCS, ACTIVITY_PROCESSING_TIME, SYNC_REQUESTS_TOTAL, GEAR_PROCESSING_TIME
+from src.models import SyncStatus, SyncStatusResponse
+from kinetic_common.models import (
+    PydanticActivity as Activity,
+    PydanticGear as Gear,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +135,6 @@ class SyncManager:
             async with session.get(url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()
-                # return [Activity(**activity) for activity in data]
                 activities = []
                 for activity in data:
                     mapped_activity = {
@@ -182,13 +185,54 @@ class SyncManager:
         try:
             fit_data = await self.fetch_fit_file(activity.id)
 
-            # Stub: Send to ingestion service
-            # In production, implement actual sending logic
-            logger.info(f"Would send activity {activity.id} to ingestion service")
-
+            # Send to ingestion service
+            with ACTIVITY_PROCESSING_TIME.labels("process_activity").time():
+                session = await self.session
+                async with session.post(f"{settings.DATA_INGESTION_SERVICE_URL}/activities", json=activity.model_dump(), files={"fit_file": fit_data}) as response:
+                    response.raise_for_status()
             return True
         except Exception as e:
             logger.error(f"Error processing activity {activity.id}: {str(e)}")
+            return False
+
+    @backoff.on_exception(
+        backoff.expo,
+        (aiohttp.ClientError, asyncio.TimeoutError),
+        max_tries=settings.MAX_RETRIES,
+    )
+    async def fetch_gear(self, user_id: str) -> List[Gear]:
+        url = f"{settings.INTERVALS_API_BASE_URL}/athlete/{user_id}/gear"
+
+        with GEAR_PROCESSING_TIME.labels("fetch_gear").time():
+            session = await self.session
+            async with session.get(url) as response:
+                response.raise_for_status()
+                data = await response.json()
+                gear = []
+                for gear_item in data:
+                    if gear_item.get("component"):
+                        continue
+                    mapped_gear = {
+                        "id": gear_item.get("id"),
+                        "user_id": user_id,
+                        "name": gear_item.get("name"),
+                        "distance": gear_item.get("distance"),
+                        "time": gear_item.get("time"),
+                        "type": gear_item.get("type"),
+                    }
+                    gear.append(Gear(**mapped_gear))
+                return gear
+
+    async def process_gear(self, gear: Gear) -> bool:
+        try:
+            # Send to ingestion service
+            with GEAR_PROCESSING_TIME.labels("process_gear").time():
+                session = await self.session
+                async with session.post(f"{settings.DATA_INGESTION_SERVICE_URL}/gear", json=gear.model_dump()) as response:
+                    response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Error processing gear {gear.id}: {str(e)}")
             return False
 
     async def start_sync(
@@ -224,6 +268,9 @@ class SyncManager:
             activities = await self.fetch_activities(user_id, start_date, end_date)
             total_activities = len(activities)
 
+            gear = await self.fetch_gear(user_id)
+            total_gear = len(gear)
+
             await self.update_status(
                 user_id,
                 SyncStatus.IN_PROGRESS,
@@ -256,6 +303,31 @@ class SyncManager:
                     user_id,
                     SyncStatus.IN_PROGRESS,
                     total=total_activities,
+                    processed=processed,
+                    failed=failed,
+                )
+
+            for batch in [
+                gear[i : i + settings.SYNC_BATCH_SIZE]
+                for i in range(0, len(gear), settings.SYNC_BATCH_SIZE)
+            ]:
+                results = await asyncio.gather(
+                    *[self.process_gear(gear) for gear in batch],
+                    return_exceptions=True,
+                )
+
+                batch_processed = sum(1 for r in results if r is True)
+                batch_failed = sum(
+                    1 for r in results if r is False or isinstance(r, Exception)
+                )
+
+                processed += batch_processed
+                failed += batch_failed
+
+                await self.update_status(
+                    user_id,
+                    SyncStatus.IN_PROGRESS,
+                    total=total_gear,
                     processed=processed,
                     failed=failed,
                 )

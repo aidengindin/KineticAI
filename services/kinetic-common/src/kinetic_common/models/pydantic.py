@@ -43,3 +43,11 @@ class ActivityStream(BaseModel):
     speed: Optional[float] = None
     temperature: Optional[float] = None
     dfa_a1: Optional[float] = None 
+
+class Gear(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    distance: float
+    time: float
+    type: str

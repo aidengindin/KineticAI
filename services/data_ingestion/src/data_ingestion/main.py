@@ -9,6 +9,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from data_ingestion.db.activities import ActivityRepository
+from data_ingestion.db.gear import GearRepository
 from data_ingestion.db.database import get_db
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +61,9 @@ def clean_none_values(d: dict) -> dict:
 async def get_activity_repository(db: AsyncSession = Depends(get_db)) -> ActivityRepository:
     return ActivityRepository(db)
 
+async def get_gear_repository(db: AsyncSession = Depends(get_db)) -> GearRepository:
+    return GearRepository(db)
+
 async def update_activity_status(activity_id: str, status: UploadStatus, error_message: Optional[str] = None) -> None:
     """Update the status of an activity in Redis."""
     try:
@@ -84,6 +88,17 @@ async def update_activity_status(activity_id: str, status: UploadStatus, error_m
         raise HTTPException(
             status_code=500,
             detail="Failed to update activity status"
+        ) from e
+
+async def update_gear_status(gear_id: str, status: UploadStatus, error_message: Optional[str] = None) -> None:
+    """Update the status of a gear in Redis."""
+    try:
+        await app.state.redis_client.hset(f"gear:{gear_id}", "status", status.value)
+    except Exception as e:
+        logger.error(f"Failed to update gear status: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update gear status"
         ) from e
 
 @asynccontextmanager
@@ -240,7 +255,7 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                         repository.create_activity,
                         activity.id,
                         num_tasks,
-                        activity,  # No need for model_copy since we set user_id directly
+                        activity,
                         file_content,
                     )
                     background_tasks.add_task(
@@ -282,6 +297,43 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
         except Exception as e:
             logger.error(f"Unexpected error in start_upload: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error") from e
+
+    @app.post("/gear", response_model=UploadStatusResponse)
+    async def start_gear_upload(
+        request: str = Form(...),
+        background_tasks: BackgroundTasks = BackgroundTasks(),
+        repository: GearRepository = Depends(get_gear_repository)
+    ) -> UploadStatusResponse:
+        try:
+            request = GearUploadRequest.model_validate_json(request)
+            gear = PydanticGear(**request.gear)
+            gear.user_id = request.user_id
+            gear_status = GearStatusResponse(
+                user_id=request.user_id,
+                gear=gear.model_dump(),
+                status=UploadStatus.PENDING,
+                last_updated=datetime.now(),
+            )
+
+            await app.state.redis_client.hset(
+                f"gear:{gear.id}",
+                mapping=clean_none_values(gear_status.model_dump())
+            )
+
+            def process_gear(gear: Gear):
+                try:
+                    await repository.update_gear(gear)
+                    await update_gear_status(gear.id, UploadStatus.COMPLETED)
+                except Exception as e:
+                    logger.error(f"Failed to process gear {gear.id}: {str(e)}")
+                    await update_gear_status(gear.id, UploadStatus.FAILED, str(e))
+
+            background_tasks.add_task(
+                process_gear,
+                gear,
+            )
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
     @app.get("/activities/{activity_id}/status", response_model=ActivityStatusResponse)
     async def get_activity_status(activity_id: str):

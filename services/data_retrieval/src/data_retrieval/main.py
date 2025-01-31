@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from data_retrieval.config import get_settings
 from data_retrieval.db.database import get_db
 from data_retrieval.db.activities import ActivityRepository
+from data_retrieval.db.gear import GearRepository
 from kinetic_common.models import (
     PydanticActivity,
     PydanticActivityLap,
     PydanticActivityStream,
+    PydanticGear,
 )
-
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -105,6 +106,18 @@ def create_app() -> FastAPI:
         return await repository.get_activity_streams(activity_id, fields)
 
     return app
+
+    @app.get("/gear", response_model=List[PydanticGear])
+    async def get_gear(
+        user_id: str,
+        gear_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        repository: GearRepository = Depends(get_gear_repository)
+    ) -> List[PydanticGear]:
+        """Get gear for a user with optional filters."""
+        return await repository.get_gear(user_id, gear_type, limit, offset)
+    
 
 # Create the app at module level
 app = create_app()
