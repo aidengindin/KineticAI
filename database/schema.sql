@@ -9,8 +9,11 @@ INSERT INTO users (id, first_name, last_name) VALUES ('i95355', 'Test', 'User');
 
 CREATE TABLE gear (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     name TEXT,
-    distance FLOAT
+    distance FLOAT,
+    time FLOAT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 CREATE TABLE activities (

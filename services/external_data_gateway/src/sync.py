@@ -214,7 +214,7 @@ class SyncManager:
                         continue
                     mapped_gear = {
                         "id": gear_item.get("id"),
-                        "athlete_id": gear_item.get("athlete_id"),
+                        "user_id": gear_item.get("user_id"),
                         "name": gear_item.get("name"),
                         "distance": gear_item.get("distance"),
                         "time": gear_item.get("time"),

@@ -55,3 +55,13 @@ class ActivityStream(Base):
     speed: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     temperature: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     dfa_a1: Mapped[Optional[float]] = mapped_column(Float, nullable=True) 
+
+class Gear(Base):
+    """Gear model for database storage."""
+    __tablename__ = "gear"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String)
+    distance: Mapped[float] = mapped_column(Float)
+    time: Mapped[float] = mapped_column(Float)

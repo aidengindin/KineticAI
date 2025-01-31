@@ -46,7 +46,7 @@ class ActivityStream(BaseModel):
 
 class Gear(BaseModel):
     id: str
-    athlete_id: str
+    user_id: str
     name: str
     distance: float
     time: float
