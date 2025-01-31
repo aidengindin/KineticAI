@@ -185,10 +185,11 @@ class SyncManager:
         try:
             fit_data = await self.fetch_fit_file(activity.id)
 
-            # Stub: Send to ingestion service
-            # In production, implement actual sending logic
-            logger.info(f"Would send activity {activity.id} to ingestion service")
-
+            # Send to ingestion service
+            with ACTIVITY_PROCESSING_TIME.labels("process_activity").time():
+                session = await self.session
+                async with session.post(f"{settings.DATA_INGESTION_SERVICE_URL}/activities", json=activity.model_dump(), files={"fit_file": fit_data}) as response:
+                    response.raise_for_status()
             return True
         except Exception as e:
             logger.error(f"Error processing activity {activity.id}: {str(e)}")
@@ -223,9 +224,11 @@ class SyncManager:
 
     async def process_gear(self, gear: Gear) -> bool:
         try:
-            # Stub: Send to ingestion service
-            # In production, implement actual sending logic
-            logger.info(f"Would send gear {gear.id} to ingestion service")
+            # Send to ingestion service
+            with GEAR_PROCESSING_TIME.labels("process_gear").time():
+                session = await self.session
+                async with session.post(f"{settings.DATA_INGESTION_SERVICE_URL}/gear", json=gear.model_dump()) as response:
+                    response.raise_for_status()
             return True
         except Exception as e:
             logger.error(f"Error processing gear {gear.id}: {str(e)}")
