@@ -65,3 +65,4 @@ class Gear(Base):
     name: Mapped[str] = mapped_column(String)
     distance: Mapped[float] = mapped_column(Float)
     time: Mapped[float] = mapped_column(Float)
+    type: Mapped[str] = mapped_column(String)

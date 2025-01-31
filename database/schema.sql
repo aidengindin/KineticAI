@@ -13,6 +13,7 @@ CREATE TABLE gear (
     name TEXT,
     distance FLOAT,
     time FLOAT,
+    type TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 

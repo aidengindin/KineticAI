@@ -50,3 +50,4 @@ class Gear(BaseModel):
     name: str
     distance: float
     time: float
+    type: str
