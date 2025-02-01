@@ -26,7 +26,7 @@ from data_ingestion.models import (
     UploadStatusResponse,
     UploadRequest,
 )
-from kinetic_common.models import PydanticActivity
+from kinetic_common.models import PydanticActivity, PydanticGear
 
 # Configure logging
 logging.basicConfig(
@@ -320,7 +320,7 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                 mapping=clean_none_values(gear_status.model_dump())
             )
 
-            def process_gear(gear: Gear):
+            async def process_gear(gear: PydanticGear):
                 try:
                     await repository.update_gear(gear)
                     await update_gear_status(gear.id, UploadStatus.COMPLETED)

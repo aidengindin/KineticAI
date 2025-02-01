@@ -5,10 +5,12 @@ from kinetic_common.models import (
     PydanticActivity,
     PydanticActivityLap,
     PydanticActivityStream,
+    PydanticGear,
     Base,
     Activity,
     ActivityLap,
     ActivityStream,
+    Gear,
 )
 
 __version__ = "0.1.0"
@@ -18,8 +20,10 @@ __all__ = [
     'PydanticActivity',
     'PydanticActivityLap',
     'PydanticActivityStream',
+    'PydanticGear',
     'Base',
     'Activity',
     'ActivityLap',
     'ActivityStream',
+    'Gear',
 ] 
