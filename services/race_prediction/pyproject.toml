@@ -1,0 +1,34 @@
+[tool.poetry]
+name = "kinetic-race-prediction"
+version = "0.1.0"
+description = "Running race prediction service for KineticAI"
+authors = ["Aiden Gindin <aiden@aidengindin.com>"]
+packages = [
+    { include = "race_prediction", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+sqlalchemy = "^2.0.23"
+pydantic = "^2.5.2"
+fastapi = "^0.115.5"
+uvicorn = "^0.32.0"
+pydantic-settings = "^2.1.0"
+prometheus-client = "^0.21.0"
+kinetic-common = {path = "../kinetic-common", develop = true}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.0"
+pytest-cov = "^4.1.0"
+pytest-mock = "^3.12.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=race_prediction"
+asyncio_mode = "auto"

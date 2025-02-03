@@ -1,7 +1,9 @@
 CREATE TABLE users (
     id TEXT PRIMARY KEY,
     first_name TEXT,
-    last_name TEXT
+    last_name TEXT,
+    running_cp INTEGER,
+    running_w_prime INTEGER
 );
 
 -- Insert test user
