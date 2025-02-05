@@ -6,7 +6,7 @@ from fastapi import BackgroundTasks, FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 
-from race_prediction.config import get_settings
+from performance_modeling.config import get_settings
 
 logging.basicConfig(
     level=logging.DEBUG,

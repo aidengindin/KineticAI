@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "kinetic-race-prediction"
+name = "kinetic-performance-modeling"
 version = "0.1.0"
-description = "Running race prediction service for KineticAI"
+description = "Performance modeling service for KineticAI"
 authors = ["Aiden Gindin <aiden@aidengindin.com>"]
 packages = [
-    { include = "race_prediction", from = "src" }
+    { include = "performance_modeling", from = "src" }
 ]
 
 [tool.poetry.dependencies]
