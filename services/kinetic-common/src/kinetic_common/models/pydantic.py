@@ -7,9 +7,13 @@ class User(BaseModel):
     id: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    weight: Optional[float] = None
     running_cp: Optional[int] = None
     running_tte: Optional[int] = None
     running_w_prime: Optional[int] = None
+    cycling_cp: Optional[int] = None
+    cycling_tte: Optional[int] = None
+    cycling_w_prime: Optional[int] = None
 
 class Activity(BaseModel):
     """Activity model for request/response data."""

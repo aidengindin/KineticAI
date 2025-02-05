@@ -14,9 +14,13 @@ class User(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     first_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     last_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     running_cp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     running_tte: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     running_w_prime: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cycling_cp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cycling_tte: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cycling_w_prime: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 class Activity(Base):
     """Activity model for database storage."""
