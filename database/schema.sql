@@ -3,6 +3,7 @@ CREATE TABLE users (
     first_name TEXT,
     last_name TEXT,
     running_cp INTEGER,
+    running_tte INTEGER,
     running_w_prime INTEGER
 );
 
@@ -91,6 +92,31 @@ CREATE TABLE activity_streams (
     rear_gear INTEGER,
     PRIMARY KEY (time, activity_id, sequence),
     FOREIGN KEY (activity_id) REFERENCES activities(id)
+);
+
+CREATE TABLE races (
+    id UUID PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    start_date TIMESTAMP NOT NULL,
+    name TEXT,
+    distance INTEGER NOT NULL,
+    elevation_gain INTEGER,
+    gear_id TEXT,
+    predicted_duration INTEGER,
+    predicted_power INTEGER,
+    predicted_running_effectiveness FLOAT,
+    predicted_riegel_exponent FLOAT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (gear_id) REFERENCES gear(id)
+);
+
+CREATE TABLE power_curves (
+    user_id TEXT NOT NULL,
+    sport TEXT NOT NULL,
+    duration INTEGER NOT NULL,
+    power INTEGER NOT NULL,
+    PRIMARY KEY (user_id, sport, duration),
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;

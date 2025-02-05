@@ -7,6 +7,17 @@ class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
     pass
 
+class User(Base):
+    """User model for database storage."""
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    running_cp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    running_tte: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    running_w_prime: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
 class Activity(Base):
     """Activity model for database storage."""
     __tablename__ = "activities"
@@ -66,3 +77,26 @@ class Gear(Base):
     distance: Mapped[float] = mapped_column(Float)
     time: Mapped[float] = mapped_column(Float)
     type: Mapped[str] = mapped_column(String)
+
+class Race(Base):
+    __tablename__ = "races"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    distance: Mapped[int] = mapped_column(Integer)
+    elevation_gain: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    gear_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    predicted_duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    predicted_power: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    predicted_running_effectiveness: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    predicted_riegel_exponent: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+class PowerCurve(Base):
+    __tablename__ = "power_curves"
+
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    sport: Mapped[str] = mapped_column(String, primary_key=True)
+    duration: Mapped[int] = mapped_column(Integer, primary_key=True)
+    power: Mapped[int] = mapped_column(Integer)

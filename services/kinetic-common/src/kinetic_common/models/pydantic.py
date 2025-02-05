@@ -2,6 +2,15 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 
+class User(BaseModel):
+    """User model for request/response data."""
+    id: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    running_cp: Optional[int] = None
+    running_tte: Optional[int] = None
+    running_w_prime: Optional[int] = None
+
 class Activity(BaseModel):
     """Activity model for request/response data."""
     id: str
@@ -51,3 +60,22 @@ class Gear(BaseModel):
     distance: float
     time: float
     type: str
+
+class Race(BaseModel):
+    id: str
+    user_id: str
+    start_date: datetime
+    name: Optional[str] = None
+    distance: int
+    elevation_gain: Optional[int] = None
+    gear: Optional[Gear] = None
+    predicted_duration: Optional[int] = None
+    predicted_power: Optional[int] = None
+    predicted_running_effectiveness: Optional[float] = None
+    predicted_riegel_exponent: Optional[float] = None
+
+class PowerCurve(BaseModel):
+    user_id: str
+    sport: str
+    duration: int
+    power: float
