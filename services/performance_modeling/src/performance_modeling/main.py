@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 
 from performance_modeling.config import get_settings
+from performance_modeling.cp_estimator import estimate_cp_wp
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -55,6 +56,13 @@ def create_app() -> FastAPI:
         running_effectiveness: Optional[float],
         riegel_exponent: Optional[float],
         w_prime: Optional[int],
+    ) -> None:
+        pass
+
+    @app.post("/update_cp/${sport}/user/{user_id}")
+    async def update_cp(
+        user_id: str,
+        sport: str,
     ) -> None:
         pass
 
