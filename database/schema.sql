@@ -5,10 +5,12 @@ CREATE TABLE users (
     weight FLOAT,
     running_cp INTEGER,
     running_tte INTEGER,
-    running_w_prime INTEGER
+    running_w_prime INTEGER,
+    running_k INTEGER,
     cycling_cp INTEGER,
     cycling_tte INTEGER,
-    cycling_w_prime INTEGER
+    cycling_w_prime INTEGER,
+    cycling_k INTEGER
 );
 
 -- Insert test user

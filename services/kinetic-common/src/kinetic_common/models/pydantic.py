@@ -11,9 +11,11 @@ class User(BaseModel):
     running_cp: Optional[int] = None
     running_tte: Optional[int] = None
     running_w_prime: Optional[int] = None
+    running_k: Optional[int] = None
     cycling_cp: Optional[int] = None
     cycling_tte: Optional[int] = None
     cycling_w_prime: Optional[int] = None
+    cycling_k: Optional[int] = None
 
 class Activity(BaseModel):
     """Activity model for request/response data."""

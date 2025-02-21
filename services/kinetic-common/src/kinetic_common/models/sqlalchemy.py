@@ -18,9 +18,11 @@ class User(Base):
     running_cp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     running_tte: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     running_w_prime: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    running_k: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cycling_cp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cycling_tte: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     cycling_w_prime: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cycling_k: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 class Activity(Base):
     """Activity model for database storage."""

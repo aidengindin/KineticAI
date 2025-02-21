@@ -5,6 +5,8 @@ def predict(
         distance: int,
         cp: int,
         tte: int,
+        w_prime: int,
+        k: int,
         running_effectiveness: float,
         riegel_exponent: float,
         athlete_weight: float,
@@ -14,7 +16,7 @@ def predict(
 
     def power_for_duration(duration: int) -> int:
         if duration < tte:
-            raise NotImplementedError("Can't yet predict power for duration less than TTE")
+            return cp + w_prime / (duration - k)
         if duration == tte:
             return cp
         return cp * (duration / tte) ** riegel_exponent
@@ -31,4 +33,4 @@ def predict(
         sustainable_power = power_for_duration(predicted_time)
         power = sustainable_power
 
-    return predicted_time, power
+    return int(predicted_time), int(power)

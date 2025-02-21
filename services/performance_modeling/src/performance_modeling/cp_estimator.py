@@ -44,9 +44,9 @@ def fit_params(time_power_dict):
 
                     if error < best_fit['error']:
                         best_fit = {
-                            'cp': cp,
-                            'wp': wp,
-                            'k': k,
+                            'cp': round(cp),
+                            'wp': round(wp),
+                            'k': round(k),
                             'error': error
                         }
 
@@ -66,4 +66,5 @@ async def estimate_cp_wp(
     power_curves = await repository.get_user_power_curve(user_id, sport)
     time_power_dict = {power_curve.time: power_curve.power for power_curve in power_curves}
 
-    return fit_params(time_power_dict)
+    fit = fit_params(time_power_dict)
+    return fit['cp'], fit['wp'], fit['k']
