@@ -25,6 +25,12 @@ class RaceRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    async def get_race(self, race_id: str) -> PydanticRace:
+        stmt = select(Race).where(Race.id == race_id)
+        result = await self.db.execute(stmt)
+        race = result.scalars().first()
+        return PydanticRace.model_validate(model_to_dict(race))
+
     async def get_user_upcoming_races(self, user_id: str) -> List[PydanticRace]:
         """Get all planned upcoming races for a user."""
 

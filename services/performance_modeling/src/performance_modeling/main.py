@@ -10,9 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from performance_modeling.config import get_settings
 from performance_modeling.cp_estimator import estimate_cp_wp
 from performance_modeling.race_prediction import predict
-from performance_modeling.models import PredictionResponse
+from performance_modeling.models import CPUpdateResponse, PredictionResponse
 from performance_modeling.db.database import get_db
 from performance_modeling.db.power_curve import PowerCurveRepository
+from performance_modeling.db.users import UserRepository
+from performance_modeling.db.races import RaceRepository
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -22,6 +24,12 @@ logger = logging.getLogger(__name__)
 
 async def get_power_curve_repository(db: AsyncSession = Depends(get_db)) -> PowerCurveRepository:
     return PowerCurveRepository(db)
+
+async def get_user_repository(db: AsyncSession = Depends(get_db)) -> UserRepository:
+    return UserRepository(db)
+
+async def get_race_repository(db: AsyncSession = Depends(get_db)) -> RaceRepository:
+    return RaceRepository(db)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,38 +56,30 @@ def create_app() -> FastAPI:
     metrics_app = make_asgi_app()
     app.mount("/metrics", metrics_app)
 
-    # TODO: this should probably be removed
-    @app.get("/races/${athlete_id}")
-    async def get_races(
-        athlete_id: str,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-    ) -> None:
-        pass
-
     @app.get("/predictions/user/{user_id}/race/{race_id}", response_model=PredictionResponse)
     async def predict_race(
         user_id: str,
         race_id: str,
-        cp: Optional[int],
         running_effectiveness: Optional[float],
         riegel_exponent: Optional[float],
-        w_prime: Optional[int],
+        user_repository: UserRepository = Depends(get_user_repository),
+        race_repository: RaceRepository = Depends(get_race_repository),
     ) -> PredictionResponse:
-        # get user cp, wp, and k from data retrieval service
-        cp, wp, k = 0, 0, 0
-        distance = 0
+        user = await user_repository.get_user(user_id)
+        # TODO: handle case where user doesn't have a CP
+        # TODO: determine running effectiveness and riegel exponent automatically if not provided
+        race = await race_repository.get_race(race_id)
         time, power = predict(
-            distance=distance,
-            cp=cp,
+            distance=race.distance,
+            cp=user.cp,
             tte=50,
-            w_prime=wp,
-            k=k,
+            w_prime=user.wp,
+            k=user.k,
             running_effectiveness=running_effectiveness,
             riegel_exponent=riegel_exponent,
             athlete_weight=0,
         )
-        return PredictionResponse(time=time, power=power)
+        return PredictionResponse(predicted_time=time, predicted_power=power)
 
 
     @app.post("/cp/${sport}/user/{user_id}")
@@ -87,7 +87,16 @@ def create_app() -> FastAPI:
         user_id: str,
         sport: str,
         power_curve_repository: PowerCurveRepository = Depends(get_power_curve_repository),
-    ) -> None:
+        user_repository: UserRepository = Depends(get_user_repository),
+    ) -> CPUpdateResponse:
         cp, wp, k = await estimate_cp_wp(power_curve_repository, user_id, sport)
+        match sport:
+            case "cycling":
+                await user_repository.update_cycling_cp(user_id, cp, wp, k)
+            case "running":
+                await user_repository.update_running_cp(user_id, cp, wp, k)
+            case _:
+                raise ValueError(f"Unsupported sport: {sport}")
+        return CPUpdateResponse(cp=cp, wp=wp, k=k)
 
     return app
