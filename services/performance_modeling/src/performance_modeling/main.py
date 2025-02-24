@@ -77,12 +77,12 @@ def create_app() -> FastAPI:
             k=user.k,
             running_effectiveness=running_effectiveness,
             riegel_exponent=riegel_exponent,
-            athlete_weight=0,
+            athlete_weight=user.weight,
         )
         return PredictionResponse(predicted_time=time, predicted_power=power)
 
 
-    @app.post("/cp/${sport}/user/{user_id}")
+    @app.post("/cp/user/{user_id}/{sport}", response_model=CPUpdateResponse)
     async def update_cp(
         user_id: str,
         sport: str,
