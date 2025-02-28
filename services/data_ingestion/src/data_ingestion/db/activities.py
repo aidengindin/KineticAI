@@ -1,4 +1,5 @@
 from fitparse import FitFile
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import re
@@ -100,7 +101,7 @@ class ActivityRepository:
         await self.db.commit()
         logger.debug(f"Committed {len(laps)} laps for activity {activity_id}")
 
-    async def store_streams(self, activity_id: str, fit_file: FitFile) -> None:
+    async def store_streams(self, activity_id: str, fit_file: FitFile, user_id: str, sport: str) -> None:
         logger.debug(f"Starting to store streams for activity {activity_id}")
         messages = list(fit_file.get_messages())
         # Debug: print all message types
@@ -158,3 +159,86 @@ class ActivityRepository:
         await self.db.run_sync(lambda session: session.bulk_save_objects(streams_to_add))
         await self.db.commit()
         logger.debug(f"Committed {len(records)} records for activity {activity_id}")
+
+        # Detect best efforts
+        await self.db.update_best_efforts(activity_id, user_id, sport)  # TODO: sport
+
+    async def update_best_efforts(self, activity_id: str, user_id: str, sport: str) -> None:
+        best_efforts = self.activity_best_efforts(activity_id)
+        for duration, power in best_efforts.items():
+            existing_best_effort = await self.db.execute(
+                text("""
+                    SELECT * FROM power_curves
+                    WHERE user_id = :user_id AND sport = :sport AND duration = :duration
+                """,
+                {"user_id": user_id, "sport": sport, "duration": duration}) 
+            ).fetchone()
+            if existing_best_effort and power > existing_best_effort.power:
+                await self.db.execute(
+                    text("""
+                        UPDATE power_curves 
+                        SET power = :power
+                        WHERE user_id = :user_id AND sport = :sport AND duration = :duration
+                    """),
+                    {"power": power, "activity_id": activity_id, "user_id": user_id, "sport": sport, "duration": duration}
+                )
+
+    async def activity_best_efforts(self, activity_id: str)-> dict[int, int]:
+        logger.debug(f"Detecting best efforts for activity {activity_id}")
+        durations = [30, 60, 300, 1200, 3600]  # TODO: store this elsewhere
+        results = {}
+        for duration in durations:
+            query = text("""
+                WITH time_diffs AS (
+                    SELECT
+                        time,
+                        power,
+                        EXTRACT(EPOCH FROM (time - LAG(time) OVER (ORDER BY time))) as time_diff
+                    FROM activity_streams
+                    WHERE 
+                        activity_id = :activity_id 
+                        AND power IS NOT NULL
+                    ORDER BY time
+                ),
+                windowed_avg AS (
+                    SELECT 
+                        t1.time,
+                        SUM(t2.power * COALESCE(t2.time_diff, 0)) / 
+                            NULLIF(SUM(COALESCE(t2.time_diff, 0)), 0) as weighted_avg_power,
+                        COUNT(*) as point_count,
+                        EXTRACT(EPOCH FROM (t1.time - MIN(t2.time))) as window_duration
+                    FROM time_diffs t1
+                    JOIN time_diffs t2 ON 
+                        t2.time <= t1.time AND 
+                        t2.time > t1.time - INTERVAL ':duration seconds'
+                    GROUP BY t1.time
+                )
+                SELECT 
+                    time,
+                    weighted_avg_power as avg_power,
+                    point_count,
+                    window_duration
+                FROM windowed_avg
+                WHERE 
+                    window_duration >= :duration * 0.95
+                    AND point_count >= 3
+                ORDER BY weighted_avg_power DESC
+                LIMIT 1
+            """)
+
+            # Ensure we have enough samples for a valid average
+            min_samples = max(1, int(duration * 0.9))
+            
+            result = await self.db.execute(
+                query, 
+                {"activity_id": activity_id, "duration": duration, "min_samples": min_samples}
+            ).fetchone()
+            
+            if result:
+                results[duration] = int(result.avg_power)
+            else:
+                # Don't keep looking for still longer durations
+                break
+
+        return results
+        

@@ -273,6 +273,8 @@ def create_app(redis_client: Optional[Redis] = None) -> FastAPI:
                         num_tasks,
                         activity.id,
                         fit_file,
+                        activity.user_id,
+                        activity.sport_type,
                     )
                     
                 except HTTPException:
