@@ -12,6 +12,7 @@ import { RouterModule } from '@angular/router';
         <h1>Kinetic</h1>
         <nav>
           <a routerLink="/activities" routerLinkActive="active">Activities</a>
+          <a routerLink="/racePrediction" routerLinkActive="active">Race Prediction</a>
           <a routerLink="/settings" routerLinkActive="active">Settings</a>
         </nav>
       </header>

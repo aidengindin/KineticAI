@@ -12,6 +12,12 @@ export const routes: Routes = [
     pathMatch: 'full'
   },
   {
+    path: 'racePrediction',
+    loadChildren: () => import('./features/racePrediction/racePrediction.routes')
+      .then
+      (m => m.RACE_PREDICTION_ROUTES)
+  },
+  {
     path: 'settings',
     loadChildren: () => import('./features/settings/settings.routes')
       .then(m => m.SETTINGS_ROUTES)
